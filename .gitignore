@@ -1,0 +1,8 @@
+node_modules/
+dist/
+
+.DS_Store
+src/.DS_Store
+
+# Keep one package manager lockfile (Bun)
+package-lock.json

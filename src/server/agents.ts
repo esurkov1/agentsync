@@ -123,7 +123,7 @@ export async function setAgentMode(agentId: AgentId, mode: AgentMode): Promise<{
       }
     }
     await mkdir(dirname(agent.filePath), { recursive: true });
-    if (existsSync(agent.filePath)) await rm(agent.filePath, { recursive: true, force: true });
+    if (existsSync(agent.filePath)) await rm(agent.filePath, { force: true });
     await symlink(MASTER_FILE, agent.filePath);
     return { ok: true };
   }
@@ -131,7 +131,7 @@ export async function setAgentMode(agentId: AgentId, mode: AgentMode): Promise<{
   await ensureLocalArchive(agent);
   const localContent = await readFile(archive, "utf-8");
   await mkdir(dirname(agent.filePath), { recursive: true });
-  if (existsSync(agent.filePath)) await rm(agent.filePath, { recursive: true, force: true });
+  if (existsSync(agent.filePath)) await rm(agent.filePath, { force: true });
   await writeFile(agent.filePath, localContent, "utf-8");
   return { ok: true };
 }
@@ -144,7 +144,7 @@ export async function saveAgentLocalRules(agentId: AgentId, content: string): Pr
   await mkdir(dirname(archive), { recursive: true });
   await writeFile(archive, content, "utf-8");
   await mkdir(dirname(agent.filePath), { recursive: true });
-  if (existsSync(agent.filePath)) await rm(agent.filePath, { recursive: true, force: true });
+  if (existsSync(agent.filePath)) await rm(agent.filePath, { force: true });
   await writeFile(agent.filePath, content, "utf-8");
   return { ok: true };
 }

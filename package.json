@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.2.15",
   "scripts": {
     "dev": "bun run dev:server & bun run dev:client",
     "dev:client": "bunx vite --config vite.config.js",

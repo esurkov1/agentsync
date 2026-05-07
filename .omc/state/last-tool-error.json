@@ -1,0 +1,7 @@
+{
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"/Users/esurkov1/Desktop/test/src/client/pages\"}",
+  "error": "EISDIR: illegal operation on a directory, read '/Users/esurkov1/Desktop/test/src/client/pages'",
+  "timestamp": "2026-05-07T03:11:36.566Z",
+  "retry_count": 1
+}

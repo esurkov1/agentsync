@@ -32,7 +32,7 @@ export function useRulesState() {
   const globalDirty = (rulesState?.masterContent || "") !== (masterContent || "");
   const agentDirty =
     !!agentModal &&
-    (agentModal.mode === "local" && (agentModalContent || "") !== (agentModal.content || ""));
+    (agentModalContent || "") !== (agentModal.content || "");
 
   const saveRules = async () => {
     setBusy(true);
@@ -79,22 +79,8 @@ export function useRulesState() {
     setAgentModalContent(agent.content || "");
   };
 
-  const handleAgentModalModeChange = async (nextMode) => {
-    if (!agentModal || nextMode === agentModal.mode) return;
-    const hasUnsavedLocalChanges =
-      agentModal.mode === "local" &&
-      (agentModalContent || "") !== (agentModal.content || "");
-
-    if (hasUnsavedLocalChanges && nextMode === "global") {
-      const confirmed = window.confirm("You have unsaved local changes. Switch to global and discard them?");
-      if (!confirmed) return;
-    }
-
-    await switchMode(agentModal.agentId, nextMode);
-  };
-
   const saveAgentModal = async () => {
-    if (!agentModal || agentModal.mode !== "local") return;
+    if (!agentModal) return;
     setBusy(true);
     try {
       await api("/api/rules/agent-local-content", {
@@ -132,7 +118,6 @@ export function useRulesState() {
     agentModalContent,
     setAgentModalContent,
     openAgentModal,
-    handleAgentModalModeChange,
     saveAgentModal,
     agentDirty
   };

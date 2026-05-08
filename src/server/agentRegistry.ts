@@ -67,7 +67,16 @@ export const AGENT_TARGETS: AgentTarget[] = [
     skillsPaths: [join(HOME, ".gemini", "skills")],
     mcpConfigPaths: [join(HOME, ".gemini", "settings.json")],
   }),
-  r("cursor", "Cursor", {
+  r("devin-for-terminal", "Devin for Terminal", {}),
+  r("kimi-cli", "Kimi CLI", {}),
+  r("qwen-code", "Qwen Code", {
+    homePaths: [join(HOME, ".qwen")],
+    rulesFiles: [join(HOME, ".qwen", "AGENTS.md")],
+    agentsPaths: [join(HOME, ".qwen", "agents")],
+    skillsPaths: [join(HOME, ".qwen", "skills")],
+    mcpConfigPaths: [join(HOME, ".qwen", "settings.json")],
+  }),
+  r("cursor", "Cursor Agent", {
     homePaths: [join(HOME, ".cursor")],
     rulesFiles: [join(HOME, ".cursor", "AGENTS.md")],
   }),
@@ -110,6 +119,13 @@ export const AGENT_TARGETS: AgentTarget[] = [
   r("openclaw", "OpenClaw", {
     homePaths: [join(HOME, ".openclaw")],
     rulesFiles: [join(HOME, ".openclaw", "AGENTS.md")],
+  }),
+  r("qoder-cli", "Qoder CLI", {
+    homePaths: [join(HOME, ".qoder")],
+    rulesFiles: [join(HOME, ".qoder", "AGENTS.md")],
+  }),
+  r("pi", "Pi", {
+    homePaths: [join(HOME, ".pi", "agent")],
   }),
   r("hermes", "Hermes", {
     homePaths: [join(HOME, ".hermes")],

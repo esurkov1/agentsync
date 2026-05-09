@@ -7,7 +7,7 @@ INSTALL_DIR="$HOME/.agentsync"
 BIN="$INSTALL_DIR/bin/agentsync"
 PUBLIC_DIR="$INSTALL_DIR/public"
 LOG_DIR="$INSTALL_DIR/logs"
-PORT="${AGENTSYNC_PORT:-3000}"
+PORT="${AGENTSYNC_PORT:-3141}"
 # ─────────────────────────────────────────────────────────────────────────────
 
 OS=$(uname -s)

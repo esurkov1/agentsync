@@ -77,7 +77,7 @@ import { installRepositorySelection, scanRepository, getGhAuthStatus, type ScanI
 import { searchSkillsSh, installSkillsShItems, type SkillsShItem } from "./skillssh";
 
 const app = new Hono();
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 3141);
 app.use("*", cors());
 
 // Rules (agent system rules) routes

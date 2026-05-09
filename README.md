@@ -53,7 +53,7 @@ That's it. The installer will:
 1. Download the pre-built binary for your platform
 2. Extract it to `~/.agentsync/`
 3. Register a background service (launchd on macOS, systemd on Linux) that starts on login
-4. Open `http://localhost:3000` in your browser
+4. Open `http://localhost:3141` in your browser
 
 ### Uninstall
 

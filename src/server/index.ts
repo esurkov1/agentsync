@@ -691,7 +691,8 @@ app.put("/api/raw", async (c) => {
 });
 
 // Serve frontend static files in production (AGENTSYNC_PUBLIC_DIR is set by the install script)
-const staticDir = process.env.AGENTSYNC_PUBLIC_DIR;
+const HOME = process.env.HOME ?? process.env.USERPROFILE ?? "";
+const staticDir = process.env.AGENTSYNC_PUBLIC_DIR ?? path.join(HOME, ".agentsync", "public");
 if (staticDir) {
   app.get("*", async (c) => {
     const reqPath = c.req.path === "/" ? "/index.html" : c.req.path;

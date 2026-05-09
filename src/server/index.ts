@@ -690,17 +690,41 @@ app.put("/api/raw", async (c) => {
   return c.json({ ok: true });
 });
 
-// Serve frontend static files in production (AGENTSYNC_PUBLIC_DIR is set by the install script)
+const MIME: Record<string, string> = {
+  html: "text/html",
+  js: "application/javascript",
+  mjs: "application/javascript",
+  css: "text/css",
+  json: "application/json",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  ico: "image/x-icon",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+};
+
+function mimeType(filePath: string): string {
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+  return MIME[ext] ?? "application/octet-stream";
+}
+
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? "";
 const staticDir = process.env.AGENTSYNC_PUBLIC_DIR ?? path.join(HOME, ".agentsync", "public");
-if (staticDir) {
-  app.get("*", async (c) => {
-    const reqPath = c.req.path === "/" ? "/index.html" : c.req.path;
-    const file = Bun.file(path.join(staticDir, reqPath));
-    if (await file.exists()) return new Response(file);
-    return new Response(Bun.file(path.join(staticDir, "index.html")));
+
+app.get("*", async (c) => {
+  const reqPath = c.req.path === "/" ? "/index.html" : c.req.path;
+  const filePath = path.join(staticDir, reqPath);
+  const file = Bun.file(filePath);
+  if (await file.exists()) {
+    return new Response(file, { headers: { "Content-Type": mimeType(filePath) } });
+  }
+  return new Response(Bun.file(path.join(staticDir, "index.html")), {
+    headers: { "Content-Type": "text/html" },
   });
-}
+});
 
 await ensureSystem();
 await ensureSkillsSystem();

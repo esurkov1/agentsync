@@ -1,7 +1,7 @@
 import React from "react";
 import { Button, Select } from "./UI";
 
-export function WorkspaceListPanel({ agents, busy, openAgentModal, switchMode }) {
+export function AgentSystemListPanel({ agents, busy, openAgentModal, switchMode }) {
   return (
     <div className="rule-cards section-gap">
       {(agents || []).map((agent) => (

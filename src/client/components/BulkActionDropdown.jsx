@@ -4,7 +4,7 @@ import { Button } from "./UI";
 const ACTIONS = [
   { key: "enable",      label: "Enable" },
   { key: "disable",     label: "Disable" },
-  { key: "activateAll", label: "Activate all workspaces" },
+  { key: "activateAll", label: "Activate all agent system" },
   { key: "force",       label: "Force fix" },
   { key: "divider" },
   { key: "delete",      label: "Delete",             className: "bulk-menu-delete" },

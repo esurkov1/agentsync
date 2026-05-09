@@ -10,7 +10,12 @@ const variantClasses = {
   tree: "skill-tree-row skill-tree-dir"
 };
 
-export function Button({ className = "", variant, ...props }) {
+export function Button({ className = "", variant, size, loading, children, disabled, ...props }) {
   const baseClass = variantClasses[variant || "default"] || `btn ${variant}`;
-  return <button className={`${baseClass} ${className}`.trim()} {...props} />;
+  const sizeClass = size === "mini" ? "btn--mini" : "";
+  return (
+    <button className={`${baseClass} ${sizeClass} ${className}`.trim()} disabled={disabled || loading} {...props}>
+      {loading ? <span className="btn-spinner" /> : children}
+    </button>
+  );
 }

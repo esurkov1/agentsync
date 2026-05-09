@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
-import { Button, Checkbox, DataTable, Input, Switch } from "./UI";
+import { Button, DataTable, Input, Switch } from "./UI";
 import { BulkActionDropdown } from "./BulkActionDropdown";
 
 export const AgentsPanel = memo(function AgentsPanel({
@@ -179,14 +179,14 @@ export const AgentsPanel = memo(function AgentsPanel({
     {
       key: "agents",
       className: "skills-col-agents",
-      header: "Workspaces",
+      header: "Agent system",
       renderCell: (agent, meta) => {
         if (!meta.globallyEnabled || !meta.installedFrameworksCount) return <span className="muted">—</span>;
         const activeWithoutConflicts = Math.max(meta.activeCount - meta.statusConflict, 0);
         return (
-          <div className="workspace-count">
+          <div className="agentSystem-count">
             <div>Active: {activeWithoutConflicts}/{meta.installedFrameworksCount}</div>
-            {meta.statusConflict > 0 ? <div className="workspace-conflict">Conflict: {meta.statusConflict}</div> : null}
+            {meta.statusConflict > 0 ? <div className="agentSystem-conflict">Conflict: {meta.statusConflict}</div> : null}
           </div>
         );
       }
@@ -203,45 +203,25 @@ export const AgentsPanel = memo(function AgentsPanel({
       header: "Description",
       renderCell: (agent) => <span className="muted">{agent.description || ""}</span>
     },
-    {
-      key: "check",
-      className: "skills-col-check",
-      renderHeader: (ctx) => (
-        <Checkbox
-          checked={ctx.allVisibleSelected}
-          onChange={ctx.onToggleSelectAllVisible}
-          disabled={ctx.busy || !ctx.visibleCount}
-        />
-      ),
-      onCellClick: (e) => e.stopPropagation(),
-      renderCell: (agent, meta) => (
-        <Checkbox
-          checked={meta.selected}
-          onChange={() => meta.onToggleSelectOne(agent.id)}
-          disabled={meta.busy}
-        />
-      )
-    }
   ], [handleSetGlobalEnabled]);
 
-  const headerContext = useMemo(() => ({
-    allVisibleSelected,
+  const selectable = useMemo(() => ({
+    allSelected: allVisibleSelected,
     busy,
-    onToggleSelectAllVisible: toggleSelectAllVisible,
-    visibleCount: filteredAgents.length
-  }), [allVisibleSelected, busy, filteredAgents.length, toggleSelectAllVisible]);
+    isSelected: (agent) => selectedSet.has(agent.id),
+    onToggleAll: toggleSelectAllVisible,
+    onToggleOne: (agent) => toggleSelectOne(agent.id)
+  }), [allVisibleSelected, busy, selectedSet, toggleSelectAllVisible, toggleSelectOne]);
 
   const getRowMeta = useCallback((agent) => ({
     activeCount: installedFrameworks.filter((framework) => (framework.enabledAgents || []).includes(agent.id)).length,
     busy,
     globallyEnabled: !globallyDisabledSet.has(agent.id),
     installedFrameworksCount: installedFrameworks.length,
-    onToggleSelectOne: toggleSelectOne,
     pendingGlobal: pendingGlobalIds.has(agent.id),
-    selected: selectedSet.has(agent.id),
     statusConflict: getStatusCounts(agent.id).conflict,
     statusError: getStatusCounts(agent.id).error
-  }), [busy, getStatusCounts, globallyDisabledSet, installedFrameworks, pendingGlobalIds, selectedSet, toggleSelectOne]);
+  }), [busy, getStatusCounts, globallyDisabledSet, installedFrameworks, pendingGlobalIds]);
 
   const rowKey = useCallback((agent) => agent.id, []);
   const handleRowClick = useCallback((agent) => onOpenAgent(agent.id), [onOpenAgent]);
@@ -277,8 +257,10 @@ export const AgentsPanel = memo(function AgentsPanel({
         rowClassName="skills-row"
         onRowClick={handleRowClick}
         rowMeta={getRowMeta}
-        headerContext={headerContext}
+        selectable={selectable}
         minWidth="580px"
+        emptyTitle="No agents found"
+        emptyDescription={normalizedQuery ? "Try another search query." : "Create your first custom agent."}
       />
     </>
   );

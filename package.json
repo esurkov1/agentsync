@@ -10,9 +10,14 @@
     "dev:server": "bun run --hot src/server/index.ts",
     "build": "bun build src/server/index.ts --outdir dist/server --target bun",
     "build:client": "bunx vite build --config vite.config.js",
+    "build:binary": "bun build src/server/index.ts --compile --outfile dist/agentsync --target bun",
+    "build:release": "bun run build:client && bun run build:binary",
+    "package": "bash scripts/build-release.sh",
     "start": "bun run dist/server/index.js"
   },
   "dependencies": {
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.42.0",

@@ -132,7 +132,7 @@ export function useAgentsState() {
       const ops = installedFrameworks.map((f) => ({ agentId: f.agentId, agentName, enabled }));
       await api("/api/agents/batch-toggle", { method: "POST", body: JSON.stringify({ ops }) });
       const state = await loadAgents();
-      setMessage(`${agentName}: ${enabled ? "enabled" : "disabled"} for all workspaces`);
+      setMessage(`${agentName}: ${enabled ? "enabled" : "disabled"} for all agent system`);
       return state;
     } catch (e) {
       setMessage(`Toggle error: ${e.message}`);
@@ -244,7 +244,6 @@ export function useAgentsState() {
       setBusy(false);
     }
   };
-
   const openAgentModal = async (agentName) => {
     setBusy(true);
     try {

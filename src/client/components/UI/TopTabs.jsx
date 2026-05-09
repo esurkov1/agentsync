@@ -2,7 +2,7 @@ import React from "react";
 import { Tabs } from "./Tabs";
 
 function formatLabel(base, count) {
-  return typeof count === "number" ? `${base} (${count})` : base;
+  return `${base} (${typeof count === "number" ? count : 0})`;
 }
 
 export function TopTabs({ current, onChange, counts }) {
@@ -10,7 +10,9 @@ export function TopTabs({ current, onChange, counts }) {
     { value: "RULES", label: "RULES" },
     { value: "SKILLS", label: formatLabel("SKILLS", counts?.SKILLS) },
     { value: "AGENTS", label: formatLabel("AGENTS", counts?.AGENTS) },
-    { value: "MCP", label: formatLabel("MCP", counts?.MCP) }
+    { value: "MCP", label: formatLabel("MCP", counts?.MCP) },
+    { value: "HOOKS", label: formatLabel("HOOKS", counts?.HOOKS) },
+    { value: "PLUGINS", label: formatLabel("PLUGINS", counts?.PLUGINS) }
   ];
 
   return <Tabs tabs={tabs} current={current} onChange={onChange} />;

@@ -1,30 +1,63 @@
-import React, { memo, useCallback, useEffect, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Button, TopTabs } from "./components/UI";
-import { WorkspaceRulesModal } from "./components/WorkspaceRulesModal";
+import { AgentSystemRulesModal } from "./components/AgentSystemRulesModal";
 import { SkillsPanel } from "./components/SkillsPanel";
 import { SkillDetailsPage } from "./pages/SkillDetailsPage";
 import { AgentsPanel } from "./components/AgentsPanel";
 import { AgentDetailsPage } from "./pages/AgentDetailsPage";
 import { McpPanel } from "./components/McpPanel";
 import { McpDetailsPage } from "./pages/McpDetailsPage";
+import { HooksPage } from "./pages/HooksPage";
+import { PluginsPanel } from "./components/PluginsPanel";
+import { PluginDetailsPage } from "./pages/PluginDetailsPage";
 import { RulesPage } from "./pages/RulesPage";
+import { InstallerModal } from "./components/InstallerModal";
+import { InstallerScanModal } from "./components/InstallerScanModal";
+import { InstallDropdown } from "./components/InstallDropdown";
+import { SkillsShModal } from "./components/SkillsShModal";
+import { useSkillsShInstaller } from "./hooks/useSkillsShInstaller";
 import { useRulesState } from "./hooks/useRulesState";
 import { useSkillsState } from "./hooks/useSkillsState";
 import { useAgentsState } from "./hooks/useAgentsState";
 import { useMcpState } from "./hooks/useMcpState";
+import { useHooksState } from "./hooks/useHooksState";
+import { usePluginsState } from "./hooks/usePluginsState";
 import { useRouter } from "./hooks/useRouter";
+import { useInstaller } from "./hooks/useInstaller";
+import { FileDetailOverlay } from "./components/FileDetailOverlay";
 
-const EMPTY_STATUS = { RULES: false, SKILLS: false, AGENTS: false, MCP: false };
-const EMPTY_COUNTS = { SKILLS: undefined, AGENTS: undefined, MCP: undefined };
+function useScrollRestore(isDetailOpen) {
+  const savedY = useRef(0);
+  useEffect(() => {
+    if (isDetailOpen) {
+      savedY.current = window.scrollY;
+    } else {
+      requestAnimationFrame(() => window.scrollTo(0, savedY.current));
+    }
+  }, [isDetailOpen]);
+}
+
+const EMPTY_STATUS = { RULES: false, SKILLS: false, AGENTS: false, MCP: false, HOOKS: false, PLUGINS: false };
+const EMPTY_COUNTS = { SKILLS: undefined, AGENTS: undefined, MCP: undefined, HOOKS: undefined, PLUGINS: undefined };
 
 export function App() {
-  const { tab, skillId: routeSkillId, agentId: routeAgentId, serverId: routeServerId, navigate } = useRouter();
+  const {
+    tab,
+    skillId: routeSkillId,
+    agentId: routeAgentId,
+    serverId: routeServerId,
+    pluginId: routePluginId,
+    overlayType: routeOverlayType,
+    overlayId: routeOverlayId,
+    navigate,
+    navigateOverlay
+  } = useRouter();
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [busyByTab, setBusyByTab] = useState(EMPTY_STATUS);
   const [detailByTab, setDetailByTab] = useState(EMPTY_STATUS);
   const [tabCounts, setTabCounts] = useState(EMPTY_COUNTS);
 
-  const busy = busyByTab.RULES || busyByTab.SKILLS || busyByTab.AGENTS || busyByTab.MCP;
+  const busy = busyByTab.RULES || busyByTab.SKILLS || busyByTab.AGENTS || busyByTab.MCP || busyByTab.HOOKS || busyByTab.PLUGINS;
   const showingDetail = !!detailByTab[tab];
 
   const setTabBusy = useCallback((tabName, nextBusy) => {
@@ -45,19 +78,33 @@ export function App() {
   const refreshAll = async () => {
     setRefreshVersion((version) => version + 1);
   };
+  const installer = useInstaller(refreshAll);
+  const skillssh = useSkillsShInstaller(refreshAll);
 
   return (
     <div className="container">
-      <div className="topbar">
-        <h1 className="title">AgentSync</h1>
-        <div className="row">
-          <Button onClick={refreshAll} disabled={busy}>Refresh</Button>
+      <div className="app-header">
+        <div className="topbar">
+          <svg className="topbar-logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="5" y="8" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+            <rect x="9" y="11" width="2" height="2" rx="0.5" fill="currentColor"/>
+            <rect x="13" y="11" width="2" height="2" rx="0.5" fill="currentColor"/>
+            <path d="M9 16h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M12 8V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <circle cx="12" cy="4" r="1" fill="currentColor"/>
+            <path d="M5 13H3M19 13h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <div className="topbar-nav">
+            {showingDetail
+              ? <Button onClick={routeOverlayType ? () => history.back() : handleCloseDetail} disabled={busy}>← Back</Button>
+              : <TopTabs current={tab} onChange={handleTabChange} counts={tabCounts} />}
+          </div>
+          <div className="row">
+            <InstallDropdown onGitHub={installer.openScan} onSkillsSh={skillssh.openModal} disabled={busy} />
+            <Button onClick={refreshAll} disabled={busy} loading={busy}>Refresh</Button>
+          </div>
         </div>
       </div>
-
-      {showingDetail
-        ? <Button onClick={handleCloseDetail} disabled={busy}>← Back</Button>
-        : <TopTabs current={tab} onChange={handleTabChange} counts={tabCounts} />}
 
       <RulesRoute
         hidden={tab !== "RULES"}
@@ -97,6 +144,78 @@ export function App() {
         onDetailChange={setTabDetail}
         onCountChange={setTabCount}
       />
+
+      <HooksRoute
+        hidden={tab !== "HOOKS"}
+        refreshVersion={refreshVersion}
+        onBusyChange={setTabBusy}
+        onCountChange={setTabCount}
+      />
+
+      <PluginsRoute
+        hidden={tab !== "PLUGINS"}
+        routePluginId={routePluginId}
+        routeOverlayType={routeOverlayType}
+        routeOverlayId={routeOverlayId}
+        refreshVersion={refreshVersion}
+        navigate={navigate}
+        navigateOverlay={navigateOverlay}
+        appBusy={busy}
+        onBusyChange={setTabBusy}
+        onDetailChange={setTabDetail}
+        onCountChange={setTabCount}
+      />
+
+      {installer.open ? (
+        <InstallerModal
+          busy={installer.busy}
+          error={installer.error}
+          repoUrl={installer.repoUrl}
+          grouped={installer.grouped}
+          selectedKeys={installer.selectedKeys}
+          onToggleItem={installer.toggleItem}
+          onToggleCategory={installer.toggleCategory}
+          onTogglePlugin={installer.togglePlugin}
+          onToggleAll={installer.toggleAll}
+          onSetItemType={installer.setItemType}
+          onSetAllItemTypes={installer.setAllItemTypes}
+          totalCount={installer.items.length}
+          progress={installer.progress}
+          onInstall={installer.install}
+          onClose={() => installer.setOpen(false)}
+        />
+      ) : null}
+      {installer.scanOpen ? (
+        <InstallerScanModal
+          busy={installer.busy}
+          error={installer.error}
+          ghStatus={installer.ghStatus}
+          ghStatusLoading={installer.ghStatusLoading}
+          repoUrl={installer.repoUrl}
+          setRepoUrl={installer.setRepoUrl}
+          onScan={installer.scan}
+          onClose={() => installer.setScanOpen(false)}
+        />
+      ) : null}
+      {skillssh.open ? (
+        <SkillsShModal
+          busy={skillssh.busy}
+          searching={skillssh.searching}
+          error={skillssh.error}
+          results={skillssh.results}
+          resultCount={skillssh.resultCount}
+          selectedIds={skillssh.selectedIds}
+          selectedCount={skillssh.selectedCount}
+          progress={skillssh.progress}
+          query={skillssh.query}
+          setQuery={skillssh.setQuery}
+          onSearch={skillssh.search}
+          onToggleItem={skillssh.toggleItem}
+          onToggleAll={skillssh.toggleAll}
+          onInstall={skillssh.install}
+          onClose={skillssh.closeModal}
+        />
+      ) : null}
     </div>
   );
 }
@@ -111,13 +230,13 @@ const RulesRoute = memo(function RulesRoute({ hidden, refreshVersion, onBusyChan
     loadRules,
     saveRules,
     switchMode,
-    agentModal: workspaceModal,
-    setAgentModal: setWorkspaceModal,
-    agentModalContent: workspaceModalContent,
-    setAgentModalContent: setWorkspaceModalContent,
-    openAgentModal: openWorkspaceModal,
-    saveAgentModal: saveWorkspaceModal,
-    agentDirty: workspaceDirty
+    agentModal: agentSystemModal,
+    setAgentModal: setAgentSystemModal,
+    agentModalContent: agentSystemModalContent,
+    setAgentModalContent: setAgentSystemModalContent,
+    openAgentModal: openAgentSystemModal,
+    saveAgentModal: saveAgentSystemModal,
+    agentDirty: agentSystemDirty
   } = useRulesState();
 
   useEffect(() => {
@@ -137,19 +256,19 @@ const RulesRoute = memo(function RulesRoute({ hidden, refreshVersion, onBusyChan
         masterContent={masterContent}
         setMasterContent={setMasterContent}
         globalDirty={globalDirty}
-        openAgentModal={openWorkspaceModal}
+        openAgentModal={openAgentSystemModal}
         switchMode={switchMode}
       />
 
-      {workspaceModal ? (
-        <WorkspaceRulesModal
-          agent={workspaceModal}
-          content={workspaceModalContent}
-          onChangeContent={setWorkspaceModalContent}
-          onClose={() => setWorkspaceModal(null)}
-          onSave={saveWorkspaceModal}
+      {agentSystemModal ? (
+        <AgentSystemRulesModal
+          agent={agentSystemModal}
+          content={agentSystemModalContent}
+          onChangeContent={setAgentSystemModalContent}
+          onClose={() => setAgentSystemModal(null)}
+          onSave={saveAgentSystemModal}
           busy={busy}
-          showSave={workspaceDirty}
+          showSave={agentSystemDirty}
         />
       ) : null}
     </div>
@@ -189,6 +308,7 @@ const SkillsRoute = memo(function SkillsRoute({
   } = useSkillsState();
 
   const routeBusy = appBusy || busy;
+  useScrollRestore(!!skillModal);
 
   useEffect(() => {
     onBusyChange("SKILLS", busy);
@@ -220,14 +340,14 @@ const SkillsRoute = memo(function SkillsRoute({
 
   return (
     <div className={hidden ? "hidden-block" : ""} aria-hidden={hidden}>
-      {!skillModal ? (
+      <div style={skillModal ? { display: "none" } : undefined}>
         <SkillsPanel
           skillsState={skillsState}
           busy={routeBusy}
           onOpenSkill={handleOpenSkill}
           onCreateSkill={createNewSkill}
           onDeleteSkill={deleteExistingSkill}
-          onBatchToggleAllAgents={batchToggleAllAgents}
+                    onBatchToggleAllAgents={batchToggleAllAgents}
           onBatchSetGlobalEnabled={batchSetGlobalEnabled}
           onSetGlobalEnabled={setGlobalEnabled}
           onResolveConflict={resolveConflict}
@@ -236,7 +356,7 @@ const SkillsRoute = memo(function SkillsRoute({
           query={query}
           setQuery={setQuery}
         />
-      ) : null}
+      </div>
       {skillModal ? (
         <SkillDetailsPage
           skill={skillModal}
@@ -250,6 +370,7 @@ const SkillsRoute = memo(function SkillsRoute({
           onToggleSkill={toggleSkill}
           onResolveConflict={resolveConflict}
           onSetGlobalEnabled={setGlobalEnabled}
+          onDelete={async () => { await deleteExistingSkill(skillModal.skillId); handleCloseSkill(); }}
         />
       ) : null}
     </div>
@@ -289,6 +410,7 @@ const AgentsRoute = memo(function AgentsRoute({
   } = useAgentsState();
 
   const routeBusy = appBusy || busy;
+  useScrollRestore(!!agentModal);
 
   useEffect(() => {
     onBusyChange("AGENTS", busy);
@@ -320,14 +442,14 @@ const AgentsRoute = memo(function AgentsRoute({
 
   return (
     <div className={hidden ? "hidden-block" : ""} aria-hidden={hidden}>
-      {!agentModal ? (
+      <div style={agentModal ? { display: "none" } : undefined}>
         <AgentsPanel
           agentsState={agentsState}
           busy={routeBusy}
           onOpenAgent={handleOpenAgent}
           onCreateAgent={createNewAgent}
           onDeleteAgent={deleteExistingAgent}
-          onBatchToggleAllFrameworks={batchToggleAllFrameworks}
+                    onBatchToggleAllFrameworks={batchToggleAllFrameworks}
           onBatchSetGlobalEnabled={batchSetAgentGlobalEnabled}
           onSetGlobalEnabled={setAgentGlobalEnabled}
           onResolveConflict={resolveAgentConflict}
@@ -336,7 +458,7 @@ const AgentsRoute = memo(function AgentsRoute({
           query={query}
           setQuery={setQuery}
         />
-      ) : null}
+      </div>
       {agentModal ? (
         <AgentDetailsPage
           agent={agentModal}
@@ -350,6 +472,7 @@ const AgentsRoute = memo(function AgentsRoute({
           onToggleAgent={toggleAgent}
           onResolveConflict={resolveAgentConflict}
           onSetGlobalEnabled={setAgentGlobalEnabled}
+          onDelete={async () => { await deleteExistingAgent(agentModal.agentName); handleCloseAgent(); }}
         />
       ) : null}
     </div>
@@ -390,6 +513,7 @@ const McpRoute = memo(function McpRoute({
   } = useMcpState();
 
   const routeBusy = appBusy || busy;
+  useScrollRestore(!!serverModal);
 
   useEffect(() => { onBusyChange("MCP", busy); }, [busy, onBusyChange]);
   useEffect(() => { onDetailChange("MCP", !!serverModal); }, [serverModal, onDetailChange]);
@@ -417,7 +541,7 @@ const McpRoute = memo(function McpRoute({
 
   return (
     <div className={hidden ? "hidden-block" : ""} aria-hidden={hidden}>
-      {!serverModal ? (
+      <div style={serverModal ? { display: "none" } : undefined}>
         <McpPanel
           mcpState={mcpState}
           busy={routeBusy}
@@ -433,7 +557,7 @@ const McpRoute = memo(function McpRoute({
           setQuery={setQuery}
           serverStatuses={serverStatuses}
         />
-      ) : null}
+      </div>
       {serverModal ? (
         <McpDetailsPage
           server={serverModal}
@@ -448,6 +572,145 @@ const McpRoute = memo(function McpRoute({
           onSetGlobalEnabled={setGlobalEnabled}
           onTestServer={testServer}
           serverStatuses={serverStatuses}
+          onDelete={async () => { await deleteExistingServer(serverModal.id); handleCloseServer(); }}
+        />
+      ) : null}
+    </div>
+  );
+});
+
+const HooksRoute = memo(function HooksRoute({
+  hidden,
+  refreshVersion,
+  onBusyChange,
+  onCountChange
+}) {
+  const {
+    busy,
+    hooksState,
+    hookCount,
+    content,
+    setContent,
+    scope,
+    setScope,
+    selectedAgentId,
+    setSelectedAgentId,
+    reload,
+    commitHooks,
+    syncHooks,
+  } = useHooksState();
+
+  useEffect(() => { onBusyChange("HOOKS", busy); }, [busy, onBusyChange]);
+  useEffect(() => { if (refreshVersion > 0) reload(); }, [refreshVersion]);
+  useEffect(() => { onCountChange("HOOKS", hooksState ? hookCount : undefined); }, [hooksState, hookCount, onCountChange]);
+
+  return (
+    <div className={hidden ? "hidden-block" : ""} aria-hidden={hidden}>
+      <HooksPage
+        hooksState={hooksState}
+        content={content}
+        onCommit={commitHooks}
+        onSync={syncHooks}
+        busy={busy}
+        scope={scope}
+        setScope={setScope}
+        selectedAgentId={selectedAgentId}
+        setSelectedAgentId={setSelectedAgentId}
+      />
+    </div>
+  );
+});
+
+const PluginsRoute = memo(function PluginsRoute({
+  hidden,
+  routePluginId,
+  routeOverlayType,
+  routeOverlayId,
+  refreshVersion,
+  navigate,
+  navigateOverlay,
+  appBusy,
+  onBusyChange,
+  onDetailChange,
+  onCountChange
+}) {
+  const {
+    busy,
+    pluginsState,
+    loadPlugins,
+    syncPlugins,
+    createNewPlugin,
+    deleteExistingPlugin,
+    pluginModal,
+    setPluginModal,
+    pluginModalContent,
+    setPluginModalContent,
+    pluginContents,
+    openPluginModal,
+    savePluginModal,
+    preview,
+    previewSync
+  } = usePluginsState();
+
+  const routeBusy = appBusy || busy;
+  useEffect(() => { onBusyChange("PLUGINS", busy); }, [busy, onBusyChange]);
+  useEffect(() => { onDetailChange("PLUGINS", !!pluginModal || !!routeOverlayType); }, [pluginModal, routeOverlayType, onDetailChange]);
+  useEffect(() => { onCountChange("PLUGINS", pluginsState?.plugins?.length); }, [pluginsState, onCountChange]);
+  useEffect(() => { if (refreshVersion > 0) loadPlugins(); }, [refreshVersion]);
+
+  useEffect(() => {
+    if (hidden) return;
+    if (routePluginId && pluginModal?.id !== routePluginId) {
+      openPluginModal(routePluginId);
+    } else if (!routePluginId && pluginModal) {
+      setPluginModal(null);
+    }
+  }, [hidden, routePluginId, pluginModal, openPluginModal, setPluginModal]);
+
+  const handleOpenPlugin = useCallback((pluginId) => navigate("PLUGINS", pluginId), [navigate]);
+  const handleClosePlugin = useCallback(() => navigate("PLUGINS"), [navigate]);
+  const handleNavigateSkill = useCallback((id) => navigateOverlay(routePluginId, "skill", id), [navigateOverlay, routePluginId]);
+  const handleNavigateAgent = useCallback((id) => navigateOverlay(routePluginId, "agent", id), [navigateOverlay, routePluginId]);
+  const handleNavigateMcp = useCallback((id) => navigateOverlay(routePluginId, "mcp", id), [navigateOverlay, routePluginId]);
+  const handleNavigateHooks = useCallback(() => navigate("HOOKS"), [navigate]);
+
+  return (
+    <div className={hidden ? "hidden-block" : ""} aria-hidden={hidden}>
+      <div className={routeOverlayType ? "hidden-block" : ""}>
+        {!pluginModal ? (
+          <PluginsPanel
+            pluginsState={pluginsState}
+            busy={routeBusy}
+            onOpenPlugin={handleOpenPlugin}
+            onCreatePlugin={createNewPlugin}
+            onDeletePlugin={deleteExistingPlugin}
+            onSyncPlugins={syncPlugins}
+            onPreviewSync={previewSync}
+            preview={preview}
+          />
+        ) : null}
+        {pluginModal ? (
+          <PluginDetailsPage
+            plugin={pluginModal}
+            frameworks={pluginsState?.frameworks || []}
+            content={pluginModalContent}
+            onChangeContent={setPluginModalContent}
+            onSave={savePluginModal}
+            onBack={handleClosePlugin}
+            busy={routeBusy}
+            dirty={pluginModalContent !== (pluginModal?.originalContent || "")}
+            pluginContents={pluginContents}
+            onNavigateSkill={handleNavigateSkill}
+            onNavigateAgent={handleNavigateAgent}
+            onNavigateMcp={handleNavigateMcp}
+            onNavigateHooks={handleNavigateHooks}
+          />
+        ) : null}
+      </div>
+      {routeOverlayType ? (
+        <FileDetailOverlay
+          overlay={{ type: routeOverlayType, id: routeOverlayId }}
+          onClose={() => history.back()}
         />
       ) : null}
     </div>

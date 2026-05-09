@@ -132,7 +132,7 @@ export function useSkillsState() {
       const ops = installedAgents.map((a) => ({ agentId: a.agentId, skillId, enabled }));
       await api("/api/skills/batch-toggle", { method: "POST", body: JSON.stringify({ ops }) });
       const state = await loadSkills();
-      setMessage(`${skillId}: ${enabled ? "enabled" : "disabled"} for all workspaces`);
+      setMessage(`${skillId}: ${enabled ? "enabled" : "disabled"} for all agent system`);
       return state;
     } catch (e) {
       setMessage(`Toggle error: ${e.message}`);
@@ -244,7 +244,6 @@ export function useSkillsState() {
       setBusy(false);
     }
   };
-
   const openSkillModal = async (skillId) => {
     setBusy(true);
     try {

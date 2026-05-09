@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Badge, Panel, Switch } from "./UI";
+import { Badge, Button, Panel, Switch } from "./UI";
 
 const DESCRIPTION_RULES = {
   skill: {
@@ -42,14 +42,19 @@ function computeStats(content, type) {
   };
 }
 
-export function DetailsStats({ content, type, globalEnabled, onToggleGlobal, busy }) {
+export function DetailsStats({ content, type, globalEnabled, onToggleGlobal, busy, onDelete, deleteName }) {
   const stats = useMemo(() => computeStats(content, type), [content, type]);
   const hasGlobalToggle = typeof globalEnabled === "boolean" && typeof onToggleGlobal === "function";
 
+  const handleDelete = () => {
+    if (window.confirm(`Delete "${deleteName}"?`)) {
+      onDelete();
+    }
+  };
+
   return (
     <Panel>
-      <strong className="modal-title">Stats</strong>
-      <div className="details-stats section-gap">
+      <div className="details-stats">
         <div className="details-stat-strip">
           <span>{stats.lines} lines</span>
           <span>{stats.words} words</span>
@@ -74,6 +79,11 @@ export function DetailsStats({ content, type, globalEnabled, onToggleGlobal, bus
               title={globalEnabled ? "Disable globally" : "Enable globally"}
             />
           </div>
+        ) : null}
+        {onDelete ? (
+          <Button variant="danger" onClick={handleDelete} disabled={busy} style={{ width: "100%", marginTop: "4px" }}>
+            Delete
+          </Button>
         ) : null}
       </div>
     </Panel>

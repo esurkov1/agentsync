@@ -31,7 +31,7 @@ export function RulesPage({
 
       <aside className="skill-side">
         <Panel>
-          <strong className="modal-title">Workspaces</strong>
+          <strong className="modal-title">Agent system</strong>
           <div className="skill-targets section-gap">
             {installedAgents.map((agent) => {
               const dot = !agent.installed ? "dim" : agent.mode === "local" ? "warn" : "ok";

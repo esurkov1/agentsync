@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import path from "node:path";
 import {
   ensureSystem,
   getRulesState,
   saveAgentLocalRules,
   saveMasterRules,
   setAgentMode
-} from "./workspaces";
+} from "./agentSystems";
 import {
   batchSetGlobalEnabled,
   batchSetSkillEnabled,
@@ -52,12 +53,34 @@ import {
   testAllMcpServers,
   testMcpServer
 } from "./mcpServers";
+import {
+  ensureHooksSystem,
+  getHooksContent,
+  getHooksState,
+  previewHooksSync,
+  saveHooksContent,
+  saveHooksScopedContent,
+  syncHooks
+} from "./hooks";
+import {
+  createPlugin,
+  deletePlugin,
+  ensurePluginsSystem,
+  getPluginsState,
+  previewPluginsSync,
+  listPluginContents,
+  readPluginManifest,
+  savePluginManifest,
+  syncPlugins
+} from "./plugins";
+import { installRepositorySelection, scanRepository, getGhAuthStatus, type ScanItem } from "./installer";
+import { searchSkillsSh, installSkillsShItems, type SkillsShItem } from "./skillssh";
 
 const app = new Hono();
 const PORT = Number(process.env.PORT ?? 3000);
 app.use("*", cors());
 
-// Rules (workspace rules) routes
+// Rules (agent system rules) routes
 app.get("/api/rules/state", async (c) => c.json(await getRulesState()));
 
 app.put("/api/rules/master", async (c) => {
@@ -458,11 +481,235 @@ app.post("/api/mcp/test-all", async (c) => {
   }
 });
 
+// Hooks routes
+app.get("/api/hooks/state", async (c) => c.json(await getHooksState()));
+
+app.get("/api/hooks/content", async (c) => {
+  const scope = (c.req.query("scope") || "global") as "global" | "system" | "discovered";
+  const agentId = c.req.query("agentId") || undefined;
+  try {
+    return c.json(await getHooksContent(scope, agentId));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to read hooks content" }, 400);
+  }
+});
+
+app.put("/api/hooks/content", async (c) => {
+  const body: { content?: string; scope?: "global" | "system" | "discovered"; agentId?: string } = await c.req.json().catch(() => ({}));
+  if (typeof body.content !== "string") return c.json({ error: "content is required" }, 400);
+  try {
+    if (body.scope && body.scope !== "global") {
+      return c.json(await saveHooksScopedContent(body.scope, body.content, body.agentId));
+    }
+    return c.json(await saveHooksContent(body.content));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to save hooks" }, 400);
+  }
+});
+
+app.get("/api/hooks/preview-sync", async (c) => {
+  try {
+    return c.json(await previewHooksSync());
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to preview hooks sync" }, 400);
+  }
+});
+
+app.post("/api/hooks/sync", async (c) => {
+  try {
+    return c.json(await syncHooks());
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to sync hooks" }, 400);
+  }
+});
+
+// Plugins routes
+app.get("/api/plugins/state", async (c) => c.json(await getPluginsState()));
+
+app.get("/api/plugins/preview-sync", async (c) => {
+  try {
+    return c.json(await previewPluginsSync());
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to preview plugins sync" }, 400);
+  }
+});
+
+app.post("/api/plugins/sync", async (c) => {
+  try {
+    return c.json(await syncPlugins());
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to sync plugins" }, 400);
+  }
+});
+
+app.post("/api/plugins/create", async (c) => {
+  const body: { pluginId?: string } = await c.req.json().catch(() => ({}));
+  if (!body.pluginId) return c.json({ error: "pluginId is required" }, 400);
+  try {
+    return c.json(await createPlugin(body.pluginId));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to create plugin" }, 400);
+  }
+});
+
+app.delete("/api/plugins", async (c) => {
+  const body: { pluginId?: string } = await c.req.json().catch(() => ({}));
+  if (!body.pluginId) return c.json({ error: "pluginId is required" }, 400);
+  try {
+    return c.json(await deletePlugin(body.pluginId));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to delete plugin" }, 400);
+  }
+});
+
+app.get("/api/plugins/contents", async (c) => {
+  const pluginId = c.req.query("pluginId");
+  if (!pluginId) return c.json({ error: "pluginId is required" }, 400);
+  try {
+    return c.json(await listPluginContents(pluginId));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to list plugin contents" }, 400);
+  }
+});
+
+app.get("/api/plugins/manifest", async (c) => {
+  const pluginId = c.req.query("pluginId");
+  if (!pluginId) return c.json({ error: "pluginId is required" }, 400);
+  try {
+    return c.json(await readPluginManifest(pluginId));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to read plugin manifest" }, 400);
+  }
+});
+
+app.put("/api/plugins/manifest", async (c) => {
+  const body: { pluginId?: string; content?: string } = await c.req.json().catch(() => ({}));
+  if (!body.pluginId || typeof body.content !== "string") {
+    return c.json({ error: "pluginId and content are required" }, 400);
+  }
+  try {
+    return c.json(await savePluginManifest(body.pluginId, body.content));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to save plugin manifest" }, 400);
+  }
+});
+
+// Installer routes
+app.get("/api/installer/gh-status", async (c) => {
+  try {
+    return c.json(await getGhAuthStatus());
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to check gh auth status" }, 400);
+  }
+});
+
+app.post("/api/installer/scan", async (c) => {
+  const body: { repoUrl?: string; token?: string } = await c.req.json().catch(() => ({}));
+  if (!body.repoUrl) return c.json({ error: "repoUrl is required" }, 400);
+  try {
+    return c.json(await scanRepository(body.repoUrl, body.token));
+  } catch (error: any) {
+    return c.json({ error: error?.message ?? "Failed to scan repository" }, 400);
+  }
+});
+
+app.post("/api/installer/install", async (c) => {
+  const body: { repoUrl?: string; token?: string; items?: ScanItem[] } = await c.req.json().catch(() => ({}));
+  if (!body.repoUrl || !Array.isArray(body.items)) return c.json({ error: "repoUrl and items are required" }, 400);
+
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream<Uint8Array>();
+  const writer = writable.getWriter();
+  const send = (obj: object) => writer.write(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+  installRepositorySelection(body.repoUrl, body.items, body.token, (done, total) => {
+    send({ type: "progress", done, total });
+  }).then((result) => {
+    send({ type: "done", installed: result.installed });
+    writer.close();
+  }).catch((err: any) => {
+    send({ type: "error", message: err?.message ?? "Failed to install selection" });
+    writer.close();
+  });
+
+  return new Response(readable, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }
+  });
+});
+
+app.get("/api/installer/skillssh/search", async (c) => {
+  const query = c.req.query("q") ?? "";
+  const result = await searchSkillsSh(query);
+  return c.json(result);
+});
+
+app.post("/api/installer/skillssh/install", async (c) => {
+  const body: { items?: SkillsShItem[] } = await c.req.json().catch(() => ({}));
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    return c.json({ error: "items array is required" }, 400);
+  }
+
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream<Uint8Array>();
+  const writer = writable.getWriter();
+  const send = (obj: object) => writer.write(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+  installSkillsShItems(body.items, (done, total) => {
+    send({ type: "progress", done, total });
+  }).then((result) => {
+    send({ type: "done", installed: result.installed });
+    writer.close();
+  }).catch((err: any) => {
+    send({ type: "error", message: err?.message ?? "Failed to install" });
+    writer.close();
+  });
+
+  return new Response(readable, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }
+  });
+});
+
+app.get("/api/raw", async (c) => {
+  const filePath = c.req.query("path");
+  if (!filePath) return c.json({ error: "path required" }, 400);
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  if (!filePath.startsWith(`${home}/.agentsync`)) return c.json({ error: "Access denied" }, 403);
+  const { readFile } = await import("node:fs/promises");
+  const content = await readFile(filePath, "utf-8").catch(() => null);
+  if (content === null) return c.json({ error: "File not found" }, 404);
+  return c.json({ content });
+});
+
+app.put("/api/raw", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  if (!body.path || typeof body.content !== "string") return c.json({ error: "path and content required" }, 400);
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  if (!body.path.startsWith(`${home}/.agentsync`)) return c.json({ error: "Access denied" }, 403);
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(body.path, body.content, "utf-8");
+  return c.json({ ok: true });
+});
+
+// Serve frontend static files in production (AGENTSYNC_PUBLIC_DIR is set by the install script)
+const staticDir = process.env.AGENTSYNC_PUBLIC_DIR;
+if (staticDir) {
+  app.get("*", async (c) => {
+    const reqPath = c.req.path === "/" ? "/index.html" : c.req.path;
+    const file = Bun.file(path.join(staticDir, reqPath));
+    if (await file.exists()) return new Response(file);
+    return new Response(Bun.file(path.join(staticDir, "index.html")));
+  });
+}
+
 await ensureSystem();
 await ensureSkillsSystem();
 await syncSkills();
 await ensureAgentsSystem();
 await syncAgents();
 await ensureMcpSystem();
+await ensureHooksSystem();
+await syncHooks();
+await ensurePluginsSystem();
+await syncPlugins();
 console.log(`AgentSync running: http://localhost:${PORT}`);
 export default { port: PORT, fetch: app.fetch };

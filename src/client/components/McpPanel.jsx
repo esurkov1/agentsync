@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
-import { Button, Checkbox, DataTable, Input, Switch } from "./UI";
+import { Button, DataTable, Input, Switch } from "./UI";
 import { BulkActionDropdown } from "./BulkActionDropdown";
 
 const STATUS_DOT = {
@@ -166,13 +166,13 @@ export const McpPanel = memo(function McpPanel({
       )
     },
     {
-      key: "workspaces",
+      key: "agentSystems",
       className: "skills-col-agents",
-      header: "Workspaces",
+      header: "Agent system",
       renderCell: (server, meta) => {
         if (!meta.globallyEnabled || !meta.installedFrameworksCount) return <span className="muted">—</span>;
         return (
-          <div className="workspace-count">
+          <div className="agentSystem-count">
             <div>Active: {meta.activeCount}/{meta.installedFrameworksCount}</div>
           </div>
         );
@@ -190,33 +190,15 @@ export const McpPanel = memo(function McpPanel({
       header: "Name",
       renderCell: (server) => server.id
     },
-    {
-      key: "check",
-      className: "skills-col-check",
-      renderHeader: (ctx) => (
-        <Checkbox
-          checked={ctx.allVisibleSelected}
-          onChange={ctx.onToggleSelectAllVisible}
-          disabled={ctx.busy || !ctx.visibleCount}
-        />
-      ),
-      onCellClick: (e) => e.stopPropagation(),
-      renderCell: (server, meta) => (
-        <Checkbox
-          checked={meta.selected}
-          onChange={() => meta.onToggleSelectOne(server.id)}
-          disabled={meta.busy}
-        />
-      )
-    }
   ], [handleSetGlobalEnabled]);
 
-  const headerContext = useMemo(() => ({
-    allVisibleSelected,
+  const selectable = useMemo(() => ({
+    allSelected: allVisibleSelected,
     busy,
-    onToggleSelectAllVisible: toggleSelectAllVisible,
-    visibleCount: filteredServers.length
-  }), [allVisibleSelected, busy, filteredServers.length, toggleSelectAllVisible]);
+    isSelected: (server) => selectedSet.has(server.id),
+    onToggleAll: toggleSelectAllVisible,
+    onToggleOne: (server) => toggleSelectOne(server.id)
+  }), [allVisibleSelected, busy, selectedSet, toggleSelectAllVisible, toggleSelectOne]);
 
   const getRowMeta = useCallback((server) => ({
     activeCount: installedFrameworks.filter((f) => (f.enabledServers || []).includes(server.id)).length,
@@ -224,10 +206,8 @@ export const McpPanel = memo(function McpPanel({
     connStatus: serverStatuses[server.id] ?? null,
     globallyEnabled: !globallyDisabledSet.has(server.id),
     installedFrameworksCount: installedFrameworks.length,
-    onToggleSelectOne: toggleSelectOne,
-    pendingGlobal: pendingGlobalIds.has(server.id),
-    selected: selectedSet.has(server.id)
-  }), [busy, globallyDisabledSet, installedFrameworks, pendingGlobalIds, selectedSet, serverStatuses, toggleSelectOne]);
+    pendingGlobal: pendingGlobalIds.has(server.id)
+  }), [busy, globallyDisabledSet, installedFrameworks, pendingGlobalIds, serverStatuses]);
 
   const rowKey = useCallback((server) => server.id, []);
   const handleRowClick = useCallback((server) => onOpenServer(server.id), [onOpenServer]);
@@ -263,8 +243,10 @@ export const McpPanel = memo(function McpPanel({
         rowClassName="skills-row mcp-row"
         onRowClick={handleRowClick}
         rowMeta={getRowMeta}
-        headerContext={headerContext}
+        selectable={selectable}
         minWidth="420px"
+        emptyTitle="No MCP servers found"
+        emptyDescription={normalizedQuery ? "Try another search query." : "Create a server to make tools available in agent system."}
       />
     </>
   );

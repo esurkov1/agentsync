@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { markdown } from "../lib/markdown";
 import { Button, Panel, Tabs } from "./UI";
-import { MarkdownCodeEditor } from "./MarkdownCodeEditor";
+import { CodeEditor } from "./CodeEditor";
 
 const EDITOR_TABS = [
   { value: "CODE", label: "Code" },
@@ -83,7 +83,7 @@ export function Editor({
       </div>
 
       {viewTab === "CODE" ? (
-        <MarkdownCodeEditor value={value} onChangeText={onChangeText} readOnly={readOnly} />
+        <CodeEditor value={value} onChangeText={onChangeText} readOnly={readOnly} />
       ) : (
         <div className="markdown-preview editor-preview" dangerouslySetInnerHTML={{ __html: htmlPreview }} />
       )}

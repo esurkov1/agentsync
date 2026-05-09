@@ -77,7 +77,7 @@ function buildFileTree(paths) {
 }
 
 
-export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRename, onChangeContent, skillsState, onToggleSkill, onResolveConflict, onSetGlobalEnabled }) {
+export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRename, onChangeContent, skillsState, onToggleSkill, onResolveConflict, onSetGlobalEnabled, onDelete, fromPlugin }) {
   const [collapsedDirs, setCollapsedDirs] = useState({});
   const dirty = (content || "") !== (skill.content || "");
   const globallyEnabled = !new Set(skillsState?.globallyDisabled || []).has(skill.skillId);
@@ -121,13 +121,13 @@ export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRenam
     );
   };
 
-  const workspaceRows = (skillsState?.agents || []).map((agent) => {
+  const agentSystemRows = (skillsState?.agents || []).map((agent) => {
     const enabled = (agent.enabledSkills || []).includes(skill.skillId);
     const status = globallyEnabled ? (agent.statuses?.[skill.skillId] || "available") : "globally_disabled";
     const canToggle = agent.installed && globallyEnabled;
     return { agent, enabled, status, canToggle };
   });
-  const visibleRows = workspaceRows.filter((row) => row.status !== "not_installed");
+  const visibleRows = agentSystemRows.filter((row) => row.status !== "not_installed");
 
   return (
     <section className="skill-page section-gap">
@@ -152,6 +152,8 @@ export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRenam
             busy={busy}
             globalEnabled={globallyEnabled}
             onToggleGlobal={(enabled) => onSetGlobalEnabled(skill.skillId, enabled)}
+            onDelete={onDelete}
+            deleteName={skill.name || skill.skillId}
           />
 
           <Panel>
@@ -167,8 +169,8 @@ export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRenam
             </div>
           </Panel>
 
-          <Panel>
-            <strong className="modal-title">Workspaces</strong>
+          {!fromPlugin && <Panel>
+            <strong className="modal-title">Agent system</strong>
             <div className="skill-targets section-gap">
               {visibleRows.map(({ agent, enabled, status, canToggle }) => {
                 return (
@@ -201,7 +203,7 @@ export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRenam
                       disabled={busy || !canToggle}
                       title={
                         !agent.installed
-                          ? "Workspace is not installed"
+                          ? "Agent system is not installed"
                           : !globallyEnabled
                           ? "Enable globally first"
                           : status === "conflict"
@@ -215,7 +217,7 @@ export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRenam
                 );
               })}
             </div>
-          </Panel>
+          </Panel>}
         </aside>
       </div>
     </section>

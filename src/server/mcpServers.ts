@@ -19,6 +19,7 @@ type McpOverride = {
 
 type McpConfig = {
   globallyDisabled: string[];
+  bootstrappedTargets: string[];
   targets: Record<AgentId, {
     enabledServers: string[];
     overrides: Record<string, McpOverride>;
@@ -81,7 +82,7 @@ function defaultConfig(): McpConfig {
   const targets = Object.fromEntries(
     AGENT_IDS.map((id) => [id, { enabledServers: [], overrides: {} }])
   ) as McpConfig["targets"];
-  return { globallyDisabled: [], targets };
+  return { globallyDisabled: [], bootstrappedTargets: [], targets };
 }
 
 async function readConfig(): Promise<McpConfig> {
@@ -91,11 +92,23 @@ async function readConfig(): Promise<McpConfig> {
     await writeFile(MCP_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
     return cfg;
   }
-  const raw = await readFile(MCP_CONFIG_FILE, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<McpConfig>;
+  const raw = await readFile(MCP_CONFIG_FILE, "utf-8").catch(() => "{}");
+  let parsed: Partial<McpConfig> = {};
+  try {
+    parsed = JSON.parse(raw) as Partial<McpConfig>;
+  } catch {
+    const backupPath = `${MCP_CONFIG_FILE}.corrupt-${Date.now()}`;
+    await rename(MCP_CONFIG_FILE, backupPath).catch(() => null);
+    const cfg = defaultConfig();
+    await writeFile(MCP_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
+    return cfg;
+  }
   const cfg = defaultConfig();
   cfg.globallyDisabled = Array.isArray(parsed.globallyDisabled)
     ? parsed.globallyDisabled.filter((v) => typeof v === "string")
+    : [];
+  cfg.bootstrappedTargets = Array.isArray(parsed.bootstrappedTargets)
+    ? parsed.bootstrappedTargets.filter((v) => typeof v === "string")
     : [];
   for (const agentId of Object.keys(cfg.targets) as AgentId[]) {
     const incoming = parsed.targets?.[agentId];
@@ -301,8 +314,15 @@ export async function getMcpState(): Promise<{
 
 export async function readMcpContent(serverId: string): Promise<string> {
   const id = validateServerId(serverId);
-  const path = join(MCP_SOURCE_DIR, `${id}.json`);
-  return readFile(path, "utf-8").catch(() => "{}");
+  const globalPath = join(MCP_SOURCE_DIR, `${id}.json`);
+  if (existsSync(globalPath)) return readFile(globalPath, "utf-8");
+  const pluginsSourceDir = join(BASE_DIR, "plugins", "source");
+  for (const entry of await readdir(pluginsSourceDir, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory()) continue;
+    const p = join(pluginsSourceDir, entry.name, "mcp", `${id}.json`);
+    if (existsSync(p)) return readFile(p, "utf-8");
+  }
+  return "{}";
 }
 
 export async function saveMcpContent(serverId: string, content: string): Promise<void> {
@@ -424,12 +444,35 @@ export async function setMcpOverride(agentId: AgentId, serverId: string, overrid
 }
 
 export async function syncAllMcp(): Promise<void> {
-  const config = await readConfig();
+  const [config, sourceServers] = await Promise.all([readConfig(), listSourceServers()]);
+
+  // Bootstrap newly detected installed frameworks with all existing MCP servers
+  const unbootstrapped = MCP_FRAMEWORKS.filter(
+    (f) => isTargetInstalled(getTarget(f.agentId)) && !config.bootstrappedTargets.includes(f.agentId)
+  );
+  if (unbootstrapped.length > 0 && sourceServers.length > 0) {
+    for (const framework of unbootstrapped) {
+      const t = config.targets[framework.agentId] ?? { enabledServers: [], overrides: {} };
+      const current = new Set(t.enabledServers);
+      for (const s of sourceServers) current.add(s.id);
+      t.enabledServers = [...current].sort();
+      config.targets[framework.agentId] = t;
+      config.bootstrappedTargets.push(framework.agentId);
+    }
+    await writeConfig(config);
+  }
+
   await Promise.all(MCP_FRAMEWORKS.map((f) => syncFramework(f.agentId, config)));
 }
 
-export async function testAllMcpServers(serverIds: string[]): Promise<Record<string, { status: "ok" | "error" | "unknown"; message: string }>> {
-  const results = await Promise.all(serverIds.map(async (id) => [id, await testMcpServer(id)] as const));
+export async function testAllMcpServers(serverIds: string[]): Promise<Record<string, TestResult>> {
+  const results = await Promise.all(serverIds.map(async (id) => {
+    try {
+      return [id, await testMcpServer(id)] as const;
+    } catch (error: any) {
+      return [id, { status: "error", message: error?.message ?? "Failed to test server" }] as const;
+    }
+  }));
   return Object.fromEntries(results);
 }
 

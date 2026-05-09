@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
-import { Button, Checkbox, DataTable, Input, Switch } from "./UI";
+import { Button, DataTable, Input, Switch } from "./UI";
 import { BulkActionDropdown } from "./BulkActionDropdown";
 
 export const SkillsPanel = memo(function SkillsPanel({
@@ -72,7 +72,7 @@ export const SkillsPanel = memo(function SkillsPanel({
   }, [setSelectedIds]);
 
   const handleNewSkill = async () => {
-    const skillId = window.prompt("Skill ID (e.g. frontend-patterns)");
+    const skillId = window.prompt("Skill name (e.g. frontend-patterns)");
     if (!skillId?.trim()) return;
     await onCreateSkill(skillId.trim());
   };
@@ -176,14 +176,14 @@ export const SkillsPanel = memo(function SkillsPanel({
     {
       key: "agents",
       className: "skills-col-agents",
-      header: "Workspaces",
+      header: "Agent system",
       renderCell: (skill, meta) => {
         if (!meta.globallyEnabled || !meta.installedAgentsCount) return <span className="muted">—</span>;
         const activeWithoutConflicts = Math.max(meta.activeCount - meta.statusConflict, 0);
         return (
-          <div className="workspace-count">
+          <div className="agentSystem-count">
             <div>Active: {activeWithoutConflicts}/{meta.installedAgentsCount}</div>
-            {meta.statusConflict > 0 ? <div className="workspace-conflict">Conflict: {meta.statusConflict}</div> : null}
+            {meta.statusConflict > 0 ? <div className="agentSystem-conflict">Conflict: {meta.statusConflict}</div> : null}
           </div>
         );
       }
@@ -200,45 +200,25 @@ export const SkillsPanel = memo(function SkillsPanel({
       header: "Description",
       renderCell: (skill) => <span className="muted">{skill.description || ""}</span>
     },
-    {
-      key: "check",
-      className: "skills-col-check",
-      renderHeader: (ctx) => (
-        <Checkbox
-          checked={ctx.allVisibleSelected}
-          onChange={ctx.onToggleSelectAllVisible}
-          disabled={ctx.busy || !ctx.visibleCount}
-        />
-      ),
-      onCellClick: (e) => e.stopPropagation(),
-      renderCell: (skill, meta) => (
-        <Checkbox
-          checked={meta.selected}
-          onChange={() => meta.onToggleSelectOne(skill.id)}
-          disabled={meta.busy}
-        />
-      )
-    }
   ], [handleSetGlobalEnabled]);
 
-  const headerContext = useMemo(() => ({
-    allVisibleSelected,
+  const selectable = useMemo(() => ({
+    allSelected: allVisibleSelected,
     busy,
-    onToggleSelectAllVisible: toggleSelectAllVisible,
-    visibleCount: filteredSkills.length
-  }), [allVisibleSelected, busy, filteredSkills.length, toggleSelectAllVisible]);
+    isSelected: (skill) => selectedSet.has(skill.id),
+    onToggleAll: toggleSelectAllVisible,
+    onToggleOne: (skill) => toggleSelectOne(skill.id)
+  }), [allVisibleSelected, busy, selectedSet, toggleSelectAllVisible, toggleSelectOne]);
 
   const getRowMeta = useCallback((skill) => ({
     activeCount: installedAgents.filter((agent) => (agent.enabledSkills || []).includes(skill.id)).length,
     busy,
     globallyEnabled: !globallyDisabledSet.has(skill.id),
     installedAgentsCount: installedAgents.length,
-    onToggleSelectOne: toggleSelectOne,
     pendingGlobal: pendingGlobalIds.has(skill.id),
-    selected: selectedSet.has(skill.id),
     statusConflict: getStatusCounts(skill.id).conflict,
     statusError: getStatusCounts(skill.id).error
-  }), [busy, getStatusCounts, globallyDisabledSet, installedAgents, pendingGlobalIds, selectedSet, toggleSelectOne]);
+  }), [busy, getStatusCounts, globallyDisabledSet, installedAgents, pendingGlobalIds]);
 
   const rowKey = useCallback((skill) => skill.id, []);
   const handleRowClick = useCallback((skill) => onOpenSkill(skill.id), [onOpenSkill]);
@@ -274,8 +254,10 @@ export const SkillsPanel = memo(function SkillsPanel({
         rowClassName="skills-row"
         onRowClick={handleRowClick}
         rowMeta={getRowMeta}
-        headerContext={headerContext}
+        selectable={selectable}
         minWidth="580px"
+        emptyTitle="No skills found"
+        emptyDescription={normalizedQuery ? "Try another search query." : "Create your first skill to start syncing."}
       />
     </>
   );

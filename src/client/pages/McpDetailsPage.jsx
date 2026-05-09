@@ -43,15 +43,20 @@ function ConnStatus({ status, message }) {
   );
 }
 
-function McpStatsPanel({ server, globallyEnabled, onSetGlobalEnabled, busy, testing, onTest, connStatus }) {
+function McpStatsPanel({ server, globallyEnabled, onSetGlobalEnabled, busy, testing, onTest, connStatus, onDelete }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const tools = connStatus?.tools ?? null;
   const toolCount = Array.isArray(tools) ? tools.length : null;
 
+  const handleDelete = () => {
+    if (window.confirm(`Delete "${server.id}"?`)) {
+      onDelete();
+    }
+  };
+
   return (
     <Panel>
-      <strong className="modal-title">Stats</strong>
-      <div className="details-stats section-gap">
+      <div className="details-stats">
         <div className="details-stat-row">
           <div><div className="details-stat-label">Active</div></div>
           <Switch
@@ -103,12 +108,17 @@ function McpStatsPanel({ server, globallyEnabled, onSetGlobalEnabled, busy, test
             {testing ? "Testing…" : "Test"}
           </Button>
         </div>
+        {onDelete ? (
+          <Button variant="danger" onClick={handleDelete} disabled={busy} style={{ width: "100%", marginTop: "4px" }}>
+            Delete
+          </Button>
+        ) : null}
       </div>
     </Panel>
   );
 }
 
-function WorkspaceRow({ framework, enabled, status, canToggle, serverId, onToggleServer, busy, globallyEnabled }) {
+function AgentSystemRow({ framework, enabled, status, canToggle, serverId, onToggleServer, busy, globallyEnabled }) {
   return (
     <div className="skill-target-row">
       <div className="skill-target-left" style={{ flex: 1, minWidth: 0 }}>
@@ -130,9 +140,9 @@ function WorkspaceRow({ framework, enabled, status, canToggle, serverId, onToggl
         style={{ flexShrink: 0, marginTop: "2px" }}
         title={
           !framework.installed
-            ? "Workspace is not installed"
+            ? "Agent system is not installed"
             : !framework.supported
-            ? "MCP not supported for this workspace"
+            ? "MCP not supported for this agent system"
             : !globallyEnabled
             ? "Enable globally first"
             : enabled
@@ -157,6 +167,8 @@ export function McpDetailsPage({
   onSetGlobalEnabled,
   onTestServer,
   serverStatuses = {},
+  onDelete,
+  fromPlugin,
 }) {
   const dirty = (content || "") !== (server.content || "");
   const globallyEnabled = !new Set(mcpState?.globallyDisabled || []).has(server.id);
@@ -175,7 +187,7 @@ export function McpDetailsPage({
     }
   };
 
-  const workspaceRows = (mcpState?.frameworks || []).map((framework) => {
+  const agentSystemRows = (mcpState?.frameworks || []).map((framework) => {
     const enabled = (framework.enabledServers || []).includes(server.id);
     const status = !framework.supported
       ? "unsupported"
@@ -188,7 +200,7 @@ export function McpDetailsPage({
     return { framework, enabled, status, canToggle };
   });
 
-  const visibleRows = workspaceRows.filter(
+  const visibleRows = agentSystemRows.filter(
     (row) => row.status !== "not_installed" && row.status !== "unsupported"
   );
 
@@ -217,18 +229,19 @@ export function McpDetailsPage({
             testing={testing}
             onTest={handleTest}
             connStatus={connStatus}
+            onDelete={onDelete}
           />
 
-          <Panel>
-            <strong className="modal-title">Workspaces</strong>
+          {!fromPlugin && <Panel>
+            <strong className="modal-title">Agent system</strong>
             <div className="skill-targets section-gap">
               {visibleRows.length === 0 && (
                 <span className="muted" style={{ fontSize: "12px" }}>
-                  No supported workspaces installed.
+                  No supported agent system installed.
                 </span>
               )}
               {visibleRows.map(({ framework, enabled, status, canToggle }) => (
-                <WorkspaceRow
+                <AgentSystemRow
                   key={framework.agentId}
                   framework={framework}
                   enabled={enabled}
@@ -241,7 +254,7 @@ export function McpDetailsPage({
                 />
               ))}
             </div>
-          </Panel>
+          </Panel>}
         </aside>
       </div>
     </section>

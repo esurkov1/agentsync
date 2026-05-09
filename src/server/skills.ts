@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_IDS, AGENT_TARGETS as REGISTRY_TARGETS, type AgentId, getTarget, isTargetInstalled, pickPath } from "./agentRegistry";
 
@@ -8,6 +8,7 @@ type AgentSkillsTarget = { id: AgentId; label: string; skillsPath: string };
 type SkillsConfig = {
   targets: Record<AgentId, { mode: "symlink"; enabledSkills: string[] }>;
   globallyDisabled: string[];
+  bootstrappedTargets: string[];
 };
 
 type AgentManifest = {
@@ -65,10 +66,7 @@ async function ensureSkillsDirs(): Promise<void> {
 
 function defaultConfig(): SkillsConfig {
   const targets = Object.fromEntries(AGENT_IDS.map((id) => [id, { mode: "symlink", enabledSkills: [] }])) as SkillsConfig["targets"];
-  return {
-    targets,
-    globallyDisabled: []
-  };
+  return { targets, globallyDisabled: [], bootstrappedTargets: [] };
 }
 
 async function readConfig(): Promise<SkillsConfig> {
@@ -79,8 +77,17 @@ async function readConfig(): Promise<SkillsConfig> {
     return cfg;
   }
 
-  const raw = await readFile(SKILLS_CONFIG_FILE, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<SkillsConfig>;
+  const raw = await readFile(SKILLS_CONFIG_FILE, "utf-8").catch(() => "{}");
+  let parsed: Partial<SkillsConfig> = {};
+  try {
+    parsed = JSON.parse(raw) as Partial<SkillsConfig>;
+  } catch {
+    const backupPath = `${SKILLS_CONFIG_FILE}.corrupt-${Date.now()}`;
+    await rename(SKILLS_CONFIG_FILE, backupPath).catch(() => null);
+    const cfg = defaultConfig();
+    await writeFile(SKILLS_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
+    return cfg;
+  }
   const cfg = defaultConfig();
   for (const agentId of Object.keys(cfg.targets) as AgentId[]) {
     const incoming = parsed.targets?.[agentId];
@@ -93,6 +100,9 @@ async function readConfig(): Promise<SkillsConfig> {
   }
   cfg.globallyDisabled = Array.isArray(parsed.globallyDisabled)
     ? parsed.globallyDisabled.filter((v) => typeof v === "string")
+    : [];
+  cfg.bootstrappedTargets = Array.isArray(parsed.bootstrappedTargets)
+    ? parsed.bootstrappedTargets.filter((v) => typeof v === "string")
     : [];
   return cfg;
 }
@@ -108,8 +118,17 @@ async function readManifest(agentId: AgentId): Promise<AgentManifest> {
   if (!existsSync(path)) {
     return { managedBy: "agentsync", version: 1, entries: {} };
   }
-  const raw = await readFile(path, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<AgentManifest>;
+  const raw = await readFile(path, "utf-8").catch(() => "{}");
+  let parsed: Partial<AgentManifest> = {};
+  try {
+    parsed = JSON.parse(raw) as Partial<AgentManifest>;
+  } catch {
+    const backupPath = `${path}.corrupt-${Date.now()}`;
+    await rename(path, backupPath).catch(() => null);
+    const clean: AgentManifest = { managedBy: "agentsync", version: 1, entries: {} };
+    await writeFile(path, JSON.stringify(clean, null, 2), "utf-8");
+    return clean;
+  }
   return {
     managedBy: "agentsync",
     version: 1,
@@ -223,13 +242,14 @@ async function discoverAgentSkills(): Promise<Array<{ id: string; path: string; 
   return [...discovered.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function bootstrapSourceFromAgents(): Promise<void> {
+async function bootstrapSourceFromAgents(excludedSkills: Set<string>): Promise<void> {
   await ensureSkillsDirs();
   const sourceSkills = await listSourceSkills();
   const sourceSet = new Set(sourceSkills.map((s) => s.id));
   const discovered = await discoverAgentSkills();
 
   for (const skill of discovered) {
+    if (excludedSkills.has(skill.id)) continue;
     if (sourceSet.has(skill.id)) continue;
     const sourcePath = join(SKILLS_SOURCE_DIR, skill.id);
     const st = await lstat(skill.path).catch(() => null);
@@ -333,10 +353,26 @@ async function removeSkillFromAllAgents(skillId: string): Promise<void> {
   }
 }
 
+async function purgeSkillFromAllKnownPaths(skillId: string): Promise<void> {
+  await Promise.all(
+    AGENT_TARGETS.map(async (target) => {
+      const targetPath = join(target.skillsPath, skillId);
+      await rm(targetPath, { recursive: true, force: true }).catch(() => null);
+      await withManifestLock(target.id, async () => {
+        const manifest = await readManifest(target.id);
+        if (manifest.entries[skillId]) {
+          delete manifest.entries[skillId];
+          await writeManifest(target.id, manifest);
+        }
+      });
+    })
+  );
+}
+
 export async function ensureSkillsSystem(): Promise<void> {
   await ensureSkillsDirs();
   await readConfig();
-  await bootstrapSourceFromAgents();
+  await bootstrapSourceFromAgents(new Set());
 }
 
 export async function syncSkills(): Promise<{ ok: true }> {
@@ -344,6 +380,20 @@ export async function syncSkills(): Promise<{ ok: true }> {
   const config = await readConfig();
   const sourceSkills = await listSourceSkills();
   const sourceMap = new Map(sourceSkills.map((s) => [s.id, s]));
+
+  // Bootstrap newly detected installed agent systems with all existing skills
+  const unbootstrapped = AGENT_TARGETS.filter(
+    (t) => isTargetInstalled(getTarget(t.id)) && !config.bootstrappedTargets.includes(t.id)
+  );
+  if (unbootstrapped.length > 0 && sourceSkills.length > 0) {
+    for (const target of unbootstrapped) {
+      const current = new Set(config.targets[target.id].enabledSkills);
+      for (const s of sourceSkills) current.add(s.id);
+      config.targets[target.id].enabledSkills = [...current].sort();
+      config.bootstrappedTargets.push(target.id);
+    }
+    await writeConfig(config);
+  }
 
   for (const target of AGENT_TARGETS) {
     if (!isTargetInstalled(getTarget(target.id))) continue;
@@ -415,7 +465,6 @@ export async function getSkillsState(): Promise<{
   const unionSkills = new Map<string, { id: string; path: string; content: string }>();
   for (const skill of discoveredSkills) unionSkills.set(skill.id, skill);
   for (const skill of sourceSkills) unionSkills.set(skill.id, skill);
-
   const skills = [...unionSkills.values()].sort((a, b) => a.id.localeCompare(b.id)).map((skill) => {
     const meta = parseSkillMeta(skill.content);
     return {
@@ -612,6 +661,24 @@ export async function createSkill(skillId: string): Promise<{ ok: true }> {
   await mkdir(skillDir, { recursive: true });
   const template = `---\nname: ${cleanSkill}\ndescription: Describe what this skill does\n---\n\n## What I do\n\n-\n\n## When to use me\n\n`;
   await writeFile(join(skillDir, "SKILL.md"), template, "utf-8");
+
+  await withConfigLock(async () => {
+    const config = await readConfig();
+    config.globallyDisabled = config.globallyDisabled.filter((id) => id !== cleanSkill);
+    for (const agentId of Object.keys(config.targets) as AgentId[]) {
+      if (!isTargetInstalled(getTarget(agentId))) continue;
+      const current = new Set(config.targets[agentId].enabledSkills);
+      current.add(cleanSkill);
+      config.targets[agentId].enabledSkills = [...current].sort();
+    }
+    await writeConfig(config);
+  });
+
+  await Promise.all(
+    AGENT_TARGETS.filter((t) => isTargetInstalled(getTarget(t.id)))
+      .map((t) => syncSkillForAgent(t.id, cleanSkill, true))
+  );
+
   return { ok: true };
 }
 
@@ -620,6 +687,7 @@ export async function deleteSkill(skillId: string): Promise<{ ok: true }> {
   const cleanSkill = validateSkillId(skillId);
 
   await removeSkillFromAllAgents(cleanSkill);
+  await purgeSkillFromAllKnownPaths(cleanSkill);
 
   const skillDir = join(SKILLS_SOURCE_DIR, cleanSkill);
   if (existsSync(skillDir)) {
@@ -638,10 +706,22 @@ export async function readSkillContent(skillId: string): Promise<{ skillId: stri
   await ensureSkillsSystem();
   const cleanSkill = validateSkillId(skillId);
   const skillPath = join(SKILLS_SOURCE_DIR, cleanSkill, "SKILL.md");
-  if (!existsSync(skillPath)) throw new Error("Skill not found");
-  const content = await readFile(skillPath, "utf-8");
-  const files = await listSkillFilesRecursive(join(SKILLS_SOURCE_DIR, cleanSkill));
-  return { skillId: cleanSkill, path: skillPath, content, files };
+  if (existsSync(skillPath)) {
+    const content = await readFile(skillPath, "utf-8");
+    const files = await listSkillFilesRecursive(join(SKILLS_SOURCE_DIR, cleanSkill));
+    return { skillId: cleanSkill, path: skillPath, content, files };
+  }
+  const pluginsSourceDir = join(BASE_DIR, "plugins", "source");
+  for (const entry of await readdir(pluginsSourceDir, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory()) continue;
+    const p = join(pluginsSourceDir, entry.name, "skills", cleanSkill, "SKILL.md");
+    if (existsSync(p)) {
+      const content = await readFile(p, "utf-8");
+      const files = await listSkillFilesRecursive(join(pluginsSourceDir, entry.name, "skills", cleanSkill));
+      return { skillId: cleanSkill, path: p, content, files };
+    }
+  }
+  throw new Error("Skill not found");
 }
 
 export async function resolveSkillConflict(agentId: AgentId, skillId: string): Promise<{ ok: true }> {

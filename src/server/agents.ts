@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_IDS, AGENT_TARGETS as REGISTRY_TARGETS, type AgentId, getTarget, isTargetInstalled, pickPath } from "./agentRegistry";
 
@@ -8,6 +8,7 @@ type AgentTarget = { id: AgentId; label: string; agentsPath: string };
 type AgentsConfig = {
   targets: Record<AgentId, { mode: "symlink"; enabledAgents: string[] }>;
   globallyDisabled: string[];
+  bootstrappedTargets: string[];
 };
 
 type AgentManifest = {
@@ -61,10 +62,7 @@ async function ensureAgentsDirs(): Promise<void> {
 
 function defaultConfig(): AgentsConfig {
   const targets = Object.fromEntries(AGENT_IDS.map((id) => [id, { mode: "symlink", enabledAgents: [] }])) as AgentsConfig["targets"];
-  return {
-    targets,
-    globallyDisabled: []
-  };
+  return { targets, globallyDisabled: [], bootstrappedTargets: [] };
 }
 
 async function readConfig(): Promise<AgentsConfig> {
@@ -74,8 +72,17 @@ async function readConfig(): Promise<AgentsConfig> {
     await writeFile(AGENTS_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
     return cfg;
   }
-  const raw = await readFile(AGENTS_CONFIG_FILE, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<AgentsConfig>;
+  const raw = await readFile(AGENTS_CONFIG_FILE, "utf-8").catch(() => "{}");
+  let parsed: Partial<AgentsConfig> = {};
+  try {
+    parsed = JSON.parse(raw) as Partial<AgentsConfig>;
+  } catch {
+    const backupPath = `${AGENTS_CONFIG_FILE}.corrupt-${Date.now()}`;
+    await rename(AGENTS_CONFIG_FILE, backupPath).catch(() => null);
+    const cfg = defaultConfig();
+    await writeFile(AGENTS_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
+    return cfg;
+  }
   const cfg = defaultConfig();
   for (const agentId of Object.keys(cfg.targets) as AgentId[]) {
     const incoming = parsed.targets?.[agentId];
@@ -91,6 +98,9 @@ async function readConfig(): Promise<AgentsConfig> {
   cfg.globallyDisabled = Array.isArray(parsed.globallyDisabled)
     ? parsed.globallyDisabled.filter((v) => typeof v === "string")
     : [];
+  cfg.bootstrappedTargets = Array.isArray(parsed.bootstrappedTargets)
+    ? parsed.bootstrappedTargets.filter((v) => typeof v === "string")
+    : [];
   return cfg;
 }
 
@@ -103,8 +113,17 @@ async function readManifest(agentId: AgentId): Promise<AgentManifest> {
   await ensureAgentsDirs();
   const path = getManifestPath(agentId);
   if (!existsSync(path)) return { managedBy: "agentsync", version: 1, entries: {} };
-  const raw = await readFile(path, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<AgentManifest>;
+  const raw = await readFile(path, "utf-8").catch(() => "{}");
+  let parsed: Partial<AgentManifest> = {};
+  try {
+    parsed = JSON.parse(raw) as Partial<AgentManifest>;
+  } catch {
+    const backupPath = `${path}.corrupt-${Date.now()}`;
+    await rename(path, backupPath).catch(() => null);
+    const clean: AgentManifest = { managedBy: "agentsync", version: 1, entries: {} };
+    await writeFile(path, JSON.stringify(clean, null, 2), "utf-8");
+    return clean;
+  }
   return { managedBy: "agentsync", version: 1, entries: parsed.entries ?? {} };
 }
 
@@ -185,13 +204,14 @@ async function discoverFrameworkAgents(): Promise<Array<{ id: string; path: stri
   return [...discovered.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function bootstrapSourceFromFrameworks(): Promise<void> {
+async function bootstrapSourceFromFrameworks(excludedAgents: Set<string>): Promise<void> {
   await ensureAgentsDirs();
   const sourceAgents = await listSourceAgents();
   const sourceSet = new Set(sourceAgents.map((a) => a.id));
   const discovered = await discoverFrameworkAgents();
 
   for (const agent of discovered) {
+    if (excludedAgents.has(agent.id)) continue;
     if (sourceSet.has(agent.id)) continue;
     const st = await lstat(agent.path).catch(() => null);
     if (!st) continue;
@@ -292,10 +312,26 @@ async function removeAgentFromAllFrameworks(agentName: string): Promise<void> {
   }
 }
 
+async function purgeAgentFromAllKnownPaths(agentName: string): Promise<void> {
+  await Promise.all(
+    AGENT_TARGETS.map(async (target) => {
+      const path = targetFilePath(target.agentsPath, agentName);
+      await rm(path, { force: true }).catch(() => null);
+      await withManifestLock(target.id, async () => {
+        const manifest = await readManifest(target.id);
+        if (manifest.entries[agentName]) {
+          delete manifest.entries[agentName];
+          await writeManifest(target.id, manifest);
+        }
+      });
+    })
+  );
+}
+
 export async function ensureAgentsSystem(): Promise<void> {
   await ensureAgentsDirs();
   await readConfig();
-  await bootstrapSourceFromFrameworks();
+  await bootstrapSourceFromFrameworks(new Set());
 }
 
 export async function syncAgents(): Promise<{ ok: true }> {
@@ -304,6 +340,20 @@ export async function syncAgents(): Promise<{ ok: true }> {
   const sourceAgents = await listSourceAgents();
   const sourceMap = new Map(sourceAgents.map((a) => [a.id, a]));
   const globallyDisabled = new Set(config.globallyDisabled);
+
+  // Bootstrap newly detected installed frameworks with all existing agents
+  const unbootstrapped = AGENT_TARGETS.filter(
+    (t) => isTargetInstalled(getTarget(t.id)) && !config.bootstrappedTargets.includes(t.id)
+  );
+  if (unbootstrapped.length > 0 && sourceAgents.length > 0) {
+    for (const target of unbootstrapped) {
+      const current = new Set(config.targets[target.id].enabledAgents);
+      for (const a of sourceAgents) current.add(a.id);
+      config.targets[target.id].enabledAgents = [...current].sort();
+      config.bootstrappedTargets.push(target.id);
+    }
+    await writeConfig(config);
+  }
 
   for (const target of AGENT_TARGETS) {
     if (!isTargetInstalled(getTarget(target.id))) continue;
@@ -375,7 +425,6 @@ export async function getAgentsState(): Promise<{
   const unionAgents = new Map<string, { id: string; path: string; content: string }>();
   for (const a of discoveredAgents) unionAgents.set(a.id, a);
   for (const a of sourceAgents) unionAgents.set(a.id, a);
-
   const agents = [...unionAgents.values()]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((agent) => {
@@ -591,10 +640,21 @@ export async function saveAgentContent(agentName: string, content: string): Prom
 export async function readAgentContent(agentName: string): Promise<{ agentName: string; path: string; content: string }> {
   await ensureAgentsSystem();
   const cleanName = validateAgentName(agentName);
-  const path = sourceFilePath(cleanName);
-  if (!existsSync(path)) throw new Error("Agent not found");
-  const content = await readFile(path, "utf-8");
-  return { agentName: cleanName, path, content };
+  const globalPath = sourceFilePath(cleanName);
+  if (existsSync(globalPath)) {
+    const content = await readFile(globalPath, "utf-8");
+    return { agentName: cleanName, path: globalPath, content };
+  }
+  const pluginsSourceDir = join(BASE_DIR, "plugins", "source");
+  for (const entry of await readdir(pluginsSourceDir, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory()) continue;
+    const p = join(pluginsSourceDir, entry.name, "agents", `${cleanName}.md`);
+    if (existsSync(p)) {
+      const content = await readFile(p, "utf-8");
+      return { agentName: cleanName, path: p, content };
+    }
+  }
+  throw new Error("Agent not found");
 }
 
 export async function createAgent(agentName: string): Promise<{ ok: true }> {
@@ -604,6 +664,24 @@ export async function createAgent(agentName: string): Promise<{ ok: true }> {
   if (existsSync(path)) throw new Error("Agent already exists");
   const template = `---\nname: ${cleanName}\ndescription: Describe when Claude should delegate to this agent\ntools: Read, Grep, Glob\nmodel: sonnet\n---\n\nYou are a specialized assistant. Describe the agent behavior and focus here.\n`;
   await writeFile(path, template, "utf-8");
+
+  await withConfigLock(async () => {
+    const config = await readConfig();
+    config.globallyDisabled = config.globallyDisabled.filter((n) => n !== cleanName);
+    for (const agentId of Object.keys(config.targets) as AgentId[]) {
+      if (!isTargetInstalled(getTarget(agentId))) continue;
+      const current = new Set(config.targets[agentId].enabledAgents);
+      current.add(cleanName);
+      config.targets[agentId].enabledAgents = [...current].sort();
+    }
+    await writeConfig(config);
+  });
+
+  await Promise.all(
+    AGENT_TARGETS.filter((t) => isTargetInstalled(getTarget(t.id)))
+      .map((t) => syncAgentForFramework(t.id, cleanName, true))
+  );
+
   return { ok: true };
 }
 
@@ -612,6 +690,7 @@ export async function deleteAgent(agentName: string): Promise<{ ok: true }> {
   const cleanName = validateAgentName(agentName);
 
   await removeAgentFromAllFrameworks(cleanName);
+  await purgeAgentFromAllKnownPaths(cleanName);
 
   const path = sourceFilePath(cleanName);
   if (existsSync(path)) await rm(path, { force: true });

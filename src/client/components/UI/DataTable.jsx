@@ -1,4 +1,5 @@
 import React, { memo } from "react";
+import { Checkbox } from "./Checkbox";
 
 function shallowEqual(a, b) {
   if (a === b) return true;
@@ -15,7 +16,8 @@ const DataTableRow = memo(function DataTableRow({
   rowMeta,
   rowKeyValue,
   rowClassName,
-  onRowClick
+  onRowClick,
+  selectable
 }) {
   return (
     <tr
@@ -31,6 +33,18 @@ const DataTableRow = memo(function DataTableRow({
           {column.renderCell(row, rowMeta)}
         </td>
       ))}
+      {selectable && (
+        <td
+          className="skills-col-check"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={selectable.isSelected(row)}
+            onChange={() => selectable.onToggleOne(row)}
+            disabled={selectable.busy}
+          />
+        </td>
+      )}
     </tr>
   );
 }, (prev, next) => (
@@ -39,6 +53,7 @@ const DataTableRow = memo(function DataTableRow({
   prev.rowKeyValue === next.rowKeyValue &&
   prev.rowClassName === next.rowClassName &&
   prev.onRowClick === next.onRowClick &&
+  prev.selectable === next.selectable &&
   shallowEqual(prev.rowMeta, next.rowMeta)
 ));
 
@@ -49,21 +64,46 @@ export function DataTable({
   rowClassName,
   onRowClick,
   rowMeta,
-  headerContext,
-  minWidth
+  selectable,
+  hideHeader,
+  minWidth,
+  emptyTitle = "No data yet",
+  emptyDescription = "Try changing filters or create a new item."
 }) {
+  if (rows.length === 0) {
+    return (
+      <div className="skills-table-wrap section-gap">
+        <div className="table-empty-state">
+          <div className="table-empty-title">{emptyTitle}</div>
+          <div className="table-empty-description">{emptyDescription}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="skills-table-wrap section-gap">
       <table className="skills-table" style={minWidth ? { minWidth } : undefined}>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key} className={column.className || ""}>
-                {column.renderHeader ? column.renderHeader(headerContext) : column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
+        {!hideHeader && (
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column.key} className={column.className || ""}>
+                  {column.header}
+                </th>
+              ))}
+              {selectable && (
+                <th className="skills-col-check">
+                  <Checkbox
+                    checked={selectable.allSelected}
+                    onChange={selectable.onToggleAll}
+                    disabled={selectable.busy || rows.length === 0}
+                  />
+                </th>
+              )}
+            </tr>
+          </thead>
+        )}
         <tbody>
           {rows.map((row) => {
             const key = rowKey(row);
@@ -74,8 +114,9 @@ export function DataTable({
                 row={row}
                 rowMeta={rowMeta ? rowMeta(row) : undefined}
                 rowKeyValue={key}
-                rowClassName={rowClassName}
+                rowClassName={typeof rowClassName === "function" ? rowClassName(row) : rowClassName}
                 onRowClick={onRowClick}
+                selectable={selectable}
               />
             );
           })}

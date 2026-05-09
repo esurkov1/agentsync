@@ -104,8 +104,7 @@ export function useMcpState() {
         mcpState ? Promise.resolve(mcpState) : api("/api/mcp/state"),
         api(`/api/mcp/content?serverId=${encodeURIComponent(serverId)}`)
       ]);
-      const server = (state.servers || []).find((s) => s.id === serverId);
-      if (!server) throw new Error("Server not found");
+      const server = (state.servers || []).find((s) => s.id === serverId) ?? { id: serverId, name: serverId };
       setServerModal({ ...server, content });
       setServerModalContent(content);
     } catch (err) {

@@ -32,17 +32,19 @@ export function AgentDetailsPage({
   agentsState,
   onToggleAgent,
   onResolveConflict,
-  onSetGlobalEnabled
+  onSetGlobalEnabled,
+  onDelete,
+  fromPlugin
 }) {
   const dirty = (content || "") !== (agent.content || "");
   const globallyEnabled = !new Set(agentsState?.globallyDisabled || []).has(agent.agentName);
-  const workspaceRows = (agentsState?.frameworks || []).map((framework) => {
+  const agentSystemRows = (agentsState?.frameworks || []).map((framework) => {
     const enabled = (framework.enabledAgents || []).includes(agent.agentName);
     const status = globallyEnabled ? (framework.statuses?.[agent.agentName] || "available") : "globally_disabled";
     const canToggle = framework.installed && globallyEnabled;
     return { framework, enabled, status, canToggle };
   });
-  const visibleRows = workspaceRows.filter((row) => row.status !== "not_installed");
+  const visibleRows = agentSystemRows.filter((row) => row.status !== "not_installed");
 
   return (
     <section className="skill-page section-gap">
@@ -67,10 +69,12 @@ export function AgentDetailsPage({
             busy={busy}
             globalEnabled={globallyEnabled}
             onToggleGlobal={(enabled) => onSetGlobalEnabled(agent.agentName, enabled)}
+            onDelete={onDelete}
+            deleteName={agent.name || agent.agentName}
           />
 
-          <Panel>
-            <strong className="modal-title">Workspaces</strong>
+          {!fromPlugin && <Panel>
+            <strong className="modal-title">Agent system</strong>
             <div className="skill-targets section-gap">
               {visibleRows.map(({ framework, enabled, status, canToggle }) => {
                 return (
@@ -106,7 +110,7 @@ export function AgentDetailsPage({
                       disabled={busy || !canToggle}
                       title={
                         !framework.installed
-                          ? "Workspace is not installed"
+                          ? "Agent system is not installed"
                           : !globallyEnabled
                           ? "Enable globally first"
                           : status === "conflict"
@@ -120,7 +124,7 @@ export function AgentDetailsPage({
                 );
               })}
             </div>
-          </Panel>
+          </Panel>}
         </aside>
       </div>
     </section>

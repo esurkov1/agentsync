@@ -79,10 +79,18 @@ export const AGENT_TARGETS: AgentTarget[] = [
   r("cursor", "Cursor Agent", {
     homePaths: [join(HOME, ".cursor")],
     rulesFiles: [join(HOME, ".cursor", "AGENTS.md")],
+    agentsPaths: [join(HOME, ".cursor", "agents")],
+    skillsPaths: [join(HOME, ".cursor", "skills")],
+    mcpConfigPaths: [join(HOME, ".cursor", "mcp.json")],
   }),
   r("windsurf", "Windsurf", {
-    homePaths: [join(HOME, ".windsurf")],
-    rulesFiles: [join(HOME, ".windsurf", "AGENTS.md")],
+    homePaths: [join(HOME, ".codeium", "windsurf")],
+    rulesFiles: [
+      join(HOME, ".codeium", "windsurf", "memories", "global_rules.md"),
+      join(HOME, ".windsurf", "AGENTS.md"),
+    ],
+    skillsPaths: [join(HOME, ".codeium", "windsurf", "skills")],
+    mcpConfigPaths: [join(HOME, ".codeium", "windsurf", "mcp_config.json")],
   }),
   r("github-copilot", "GitHub Copilot", {
     homePaths: [join(HOME, ".github", "copilot")],
@@ -126,6 +134,9 @@ export const AGENT_TARGETS: AgentTarget[] = [
   }),
   r("pi", "Pi", {
     homePaths: [join(HOME, ".pi", "agent")],
+    rulesFiles: [join(HOME, ".pi", "agent", "AGENTS.md")],
+    skillsPaths: [join(HOME, ".pi", "agent", "skills")],
+    mcpConfigPaths: [join(HOME, ".pi", "agent", "mcp.json")],
   }),
   r("hermes", "Hermes", {
     homePaths: [join(HOME, ".hermes")],

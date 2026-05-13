@@ -43,16 +43,18 @@ export async function searchSkillsSh(query: string): Promise<{ items: SkillsShIt
     const raw: any[] = Array.isArray(data.skills) ? data.skills : [];
     const items: SkillsShItem[] = raw.map((s) => {
       const skillId = String(s.skillId ?? s.name);
+      const installs = typeof s.installs === "number" ? s.installs : 0;
       return {
         id: String(s.id ?? s.skillId ?? s.name),
         skillId,
         name: String(s.name ?? s.skillId),
-        installs: typeof s.installs === "number" ? s.installs : 0,
+        installs,
         source: String(s.source ?? ""),
         installed: installedIds.has(skillId),
-        installsFormatted: formatInstalls(typeof s.installs === "number" ? s.installs : 0),
+        installsFormatted: formatInstalls(installs),
       } as any;
     });
+    items.sort((a, b) => b.installs - a.installs);
     return { items, count: data.count ?? items.length };
   } catch (err: any) {
     return { items: [], count: 0, error: err?.message ?? "Failed to reach skills.sh" };
@@ -79,13 +81,14 @@ export async function installSkillsShItems(
   onProgress?.(0, total);
 
   // Install all skills in parallel — direct raw fetch, no GitHub tree scan needed.
-  // Standard skills.sh layout: skills/<skillId>/SKILL.md in the source repo.
+  // skills.sh layout: skills live at <skillId>/SKILL.md in the repo root (source = owner/repo).
   await Promise.all(items.map(async (item) => {
     const src = item.source?.trim();
     if (!src) { done++; onProgress?.(done, total); return; }
 
-    const rawBase = `https://raw.githubusercontent.com/${src}/HEAD/skills/${item.skillId}`;
-    const skillMd = await fetchRaw(`${rawBase}/SKILL.md`);
+    const skillMd = await fetchRaw(
+      `https://raw.githubusercontent.com/${src}/HEAD/${item.skillId}/SKILL.md`
+    );
 
     const target = join(SKILLS_SOURCE, item.skillId);
     await rm(target, { recursive: true, force: true });

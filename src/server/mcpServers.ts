@@ -505,6 +505,20 @@ export async function renameMcpServer(oldId: string, newId: string): Promise<voi
 type McpTool = { name: string; description?: string };
 type TestResult = { status: "ok" | "error" | "unknown"; message: string; tools?: McpTool[] };
 
+function resolvedPath(): string {
+  const extra = [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    HOME ? `${HOME}/.bun/bin` : "",
+    HOME ? `${HOME}/.volta/bin` : "",
+    HOME ? `${HOME}/.local/bin` : "",
+    HOME ? `${HOME}/.nvm/current/bin` : "",
+  ].filter(Boolean);
+  const existing = (process.env.PATH ?? "").split(":");
+  return [...new Set([...existing, ...extra])].join(":");
+}
+
 async function listToolsViaStdio(cmd: string, args: string[], env: Record<string, string>): Promise<McpTool[] | null> {
   const { spawn } = await import("node:child_process");
   return new Promise((resolve) => {
@@ -518,7 +532,7 @@ async function listToolsViaStdio(cmd: string, args: string[], env: Record<string
     };
     const timer = setTimeout(() => done(null), 8000);
     const child = spawn(cmd, args, {
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...env, PATH: resolvedPath() },
       stdio: ["pipe", "pipe", "ignore"]
     });
     let buf = "";
@@ -600,7 +614,7 @@ export async function testMcpServer(serverId: string): Promise<TestResult> {
   try {
     const { execFileSync } = await import("node:child_process");
     const whichCmd = process.platform === "win32" ? "where" : "which";
-    execFileSync(whichCmd, [cmd], { stdio: "pipe" });
+    execFileSync(whichCmd, [cmd], { stdio: "pipe", env: { ...process.env, PATH: resolvedPath() } });
     const tools = await listToolsViaStdio(cmd, def.args ?? [], def.env ?? {});
     return { status: "ok", message: `Command found: ${cmd}`, ...(tools ? { tools } : {}) };
   } catch {

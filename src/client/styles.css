@@ -420,7 +420,7 @@ select { background: var(--panel); }
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
-  max-height: calc(100vh - 170px);
+  height: calc(100vh - 170px);
 }
 
 .skills-table {

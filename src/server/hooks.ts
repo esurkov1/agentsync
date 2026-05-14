@@ -20,6 +20,7 @@ type HooksStore = {
   managedBy: "agentsync";
   version: 2;
   mode: "safe-merge";
+  seeded: boolean;
   globalHooks: JsonObject;
   systemHooks: Record<string, JsonObject>;
   discoveredHooks: Record<string, JsonObject>;
@@ -65,6 +66,7 @@ function defaultStore(): HooksStore {
     managedBy: "agentsync",
     version: 2,
     mode: "safe-merge",
+    seeded: false,
     globalHooks: {},
     systemHooks: {},
     discoveredHooks: {}
@@ -94,6 +96,7 @@ async function readStore(): Promise<HooksStore> {
         managedBy: "agentsync",
         version: 2,
         mode: "safe-merge",
+        seeded: parsed.seeded === true,
         globalHooks: isPlainObject(parsed.globalHooks) ? parsed.globalHooks : {},
         systemHooks: isPlainObject(parsed.systemHooks) ? parsed.systemHooks as Record<string, JsonObject> : {},
         discoveredHooks: isPlainObject(parsed.discoveredHooks) ? parsed.discoveredHooks as Record<string, JsonObject> : {}
@@ -315,14 +318,15 @@ async function bootstrapDiscovery(store: HooksStore): Promise<HooksStore> {
     changed = true;
   }
 
-  if (Object.keys(next.globalHooks).length === 0) {
+  if (!next.seeded) {
     const firstNonEmpty = supportedInstalled
       .map((target) => next.discoveredHooks[target.id])
       .find((hooks) => isPlainObject(hooks) && Object.keys(hooks).length > 0);
-    if (firstNonEmpty) {
+    if (firstNonEmpty && Object.keys(next.globalHooks).length === 0) {
       next.globalHooks = deepClone(firstNonEmpty);
-      changed = true;
     }
+    next.seeded = true;
+    changed = true;
   }
 
   if (changed) await writeStore(next);
@@ -358,9 +362,7 @@ async function syncAgentHooks(agentId: AgentId, store: HooksStore): Promise<void
   if (!isTargetInstalled(getTarget(agentId))) return;
 
   const managed = buildManagedHooksForAgent(store, agentId);
-  const current = await readHooksFromTarget(agentId);
-  const next = deepMerge(current, managed);
-  await writeHooksToTarget(agentId, next);
+  await writeHooksToTarget(agentId, managed);
 }
 
 export async function ensureHooksSystem(): Promise<void> {
@@ -468,8 +470,7 @@ export async function previewHooksSync(): Promise<{
   for (const framework of frameworks) {
     const current = await readHooksFromTarget(framework.agentId);
     const managed = buildManagedHooksForAgent(store, framework.agentId);
-    const merged = deepMerge(current, managed);
-    const counts = diffEntryCount(current, merged);
+    const counts = diffEntryCount(current, managed);
     result.push({
       agentId: framework.agentId,
       label: framework.label,

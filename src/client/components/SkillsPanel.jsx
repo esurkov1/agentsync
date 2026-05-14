@@ -6,6 +6,7 @@ export const SkillsPanel = memo(function SkillsPanel({
   skillsState,
   busy,
   onOpenSkill,
+  onOpenAgent,
   onCreateSkill,
   onDeleteSkill,
   onBatchToggleAllAgents,
@@ -143,6 +144,8 @@ export const SkillsPanel = memo(function SkillsPanel({
       key: "toggle",
       className: "skills-col-toggle",
       header: "Active",
+      sortable: true,
+      sortValue: (_skill, meta) => (meta.globallyEnabled ? 1 : 0),
       onCellClick: (e) => e.stopPropagation(),
       renderCell: (skill, meta) => {
         const tone = meta.pendingGlobal
@@ -177,6 +180,11 @@ export const SkillsPanel = memo(function SkillsPanel({
       key: "agents",
       className: "skills-col-agents",
       header: "Agent system",
+      sortable: true,
+      sortValue: (_skill, meta) => {
+        if (!meta.globallyEnabled || !meta.installedAgentsCount) return -1;
+        return Math.max(meta.activeCount - meta.statusConflict, 0);
+      },
       renderCell: (skill, meta) => {
         if (!meta.globallyEnabled || !meta.installedAgentsCount) return <span className="muted">—</span>;
         const activeWithoutConflicts = Math.max(meta.activeCount - meta.statusConflict, 0);
@@ -192,15 +200,46 @@ export const SkillsPanel = memo(function SkillsPanel({
       key: "name",
       className: "skills-col-name",
       header: "Name",
+      sortable: true,
+      sortValue: (skill) => (skill.name || skill.id || "").toLowerCase(),
       renderCell: (skill) => skill.name || skill.id
     },
     {
       key: "description",
       className: "skills-col-flex",
       header: "Description",
+      sortable: true,
+      sortValue: (skill) => (skill.description || "").toLowerCase(),
       renderCell: (skill) => <span className="muted">{skill.description || ""}</span>
     },
-  ], [handleSetGlobalEnabled]);
+    {
+      key: "usedBy",
+      className: "skills-col-usedBy",
+      header: "Used by agents",
+      sortable: true,
+      sortValue: (skill) => (skill.usedByAgents || []).length,
+      onCellClick: (e) => e.stopPropagation(),
+      renderCell: (skill) => {
+        const agents = skill.usedByAgents || [];
+        if (!agents.length) return <span className="muted">—</span>;
+        return (
+          <div className="skills-usedBy-chips" title={agents.map((a) => a.name).join(", ")}>
+            {agents.map((agent) => (
+              <button
+                key={agent.id}
+                type="button"
+                className="skills-usedBy-chip skills-usedBy-chip--clickable"
+                onClick={(e) => { e.stopPropagation(); onOpenAgent?.(agent.id); }}
+                title={`Open agent ${agent.name}`}
+              >
+                {agent.name}
+              </button>
+            ))}
+          </div>
+        );
+      }
+    },
+  ], [handleSetGlobalEnabled, onOpenAgent]);
 
   const selectable = useMemo(() => ({
     allSelected: allVisibleSelected,

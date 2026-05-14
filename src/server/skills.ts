@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_IDS, AGENT_TARGETS as REGISTRY_TARGETS, type AgentId, getTarget, isTargetInstalled, pickPath } from "./agentRegistry";
+import { parseFrontmatterList, parseFrontmatterScalar } from "./frontmatter";
+
+export type AgentRef = { id: string; name: string };
+export type SkillRef = { id: string | null; name: string };
 
 type AgentSkillsTarget = { id: AgentId; label: string; skillsPath: string };
 
@@ -261,12 +265,72 @@ async function bootstrapSourceFromAgents(excludedSkills: Set<string>): Promise<v
 }
 
 function parseSkillMeta(content: string): { name: string; description: string } {
-  const nameMatch = content.match(/^name:\s*(.+)$/m);
-  const descriptionMatch = content.match(/^description:\s*(.+)$/m);
   return {
-    name: nameMatch?.[1]?.trim() || "",
-    description: descriptionMatch?.[1]?.trim() || ""
+    name: parseFrontmatterScalar(content, "name"),
+    description: parseFrontmatterScalar(content, "description")
   };
+}
+
+export function parseAgentSkillsField(content: string): string[] {
+  return parseFrontmatterList(content, "skills");
+}
+
+type AgentSourceMeta = { id: string; name: string; skillRefs: string[] };
+
+async function readAgentSourceMetas(): Promise<AgentSourceMeta[]> {
+  const agentsSourceDir = join(BASE_DIR, "agents", "source");
+  const entries = await readdir(agentsSourceDir, { withFileTypes: true }).catch(() => []);
+  const result: AgentSourceMeta[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    if (!entry.name.endsWith(".md")) continue;
+    const id = entry.name.slice(0, -3);
+    const filePath = join(agentsSourceDir, entry.name);
+    const content = await readFile(filePath, "utf-8").catch(() => "");
+    const name = parseFrontmatterScalar(content, "name") || id;
+    const skillRefs = parseFrontmatterList(content, "skills");
+    result.push({ id, name, skillRefs });
+  }
+  return result;
+}
+
+async function buildSkillNameToAgentsMap(): Promise<Map<string, AgentRef[]>> {
+  const agents = await readAgentSourceMetas();
+  const byName = new Map<string, Map<string, AgentRef>>();
+  for (const agent of agents) {
+    for (const skillName of agent.skillRefs) {
+      let bucket = byName.get(skillName);
+      if (!bucket) {
+        bucket = new Map();
+        byName.set(skillName, bucket);
+      }
+      bucket.set(agent.id, { id: agent.id, name: agent.name });
+    }
+  }
+  const result = new Map<string, AgentRef[]>();
+  for (const [skillName, bucket] of byName) {
+    result.set(
+      skillName,
+      [...bucket.values()].sort((a, b) => a.name.localeCompare(b.name))
+    );
+  }
+  return result;
+}
+
+export async function buildSkillNameIndex(): Promise<Map<string, { id: string; name: string }>> {
+  const sourceSkills = await listSourceSkills();
+  const discovered = await discoverAgentSkills();
+  const union = new Map<string, { id: string; path: string; content: string }>();
+  for (const s of discovered) union.set(s.id, s);
+  for (const s of sourceSkills) union.set(s.id, s);
+
+  const result = new Map<string, { id: string; name: string }>();
+  for (const skill of union.values()) {
+    const meta = parseSkillMeta(skill.content);
+    const canonical = meta.name || skill.id;
+    if (!result.has(canonical)) result.set(canonical, { id: skill.id, name: canonical });
+  }
+  return result;
 }
 
 async function isManagedSymlink(targetPath: string, sourcePath: string): Promise<boolean> {
@@ -445,7 +509,7 @@ export async function getSkillsState(): Promise<{
   configPath: string;
   manifestPath: string;
   globallyDisabled: string[];
-  skills: Array<{ id: string; path: string; name: string; description: string; content: string }>;
+  skills: Array<{ id: string; path: string; name: string; description: string; content: string; usedByAgents: AgentRef[] }>;
   agents: Array<{
     agentId: AgentId;
     label: string;
@@ -465,14 +529,17 @@ export async function getSkillsState(): Promise<{
   const unionSkills = new Map<string, { id: string; path: string; content: string }>();
   for (const skill of discoveredSkills) unionSkills.set(skill.id, skill);
   for (const skill of sourceSkills) unionSkills.set(skill.id, skill);
+  const skillNameToAgents = await buildSkillNameToAgentsMap();
   const skills = [...unionSkills.values()].sort((a, b) => a.id.localeCompare(b.id)).map((skill) => {
     const meta = parseSkillMeta(skill.content);
+    const canonical = meta.name || skill.id;
     return {
       id: skill.id,
       path: skill.path,
-      name: meta.name || skill.id,
+      name: canonical,
       description: meta.description,
-      content: skill.content
+      content: skill.content,
+      usedByAgents: skillNameToAgents.get(canonical) ?? []
     };
   });
 

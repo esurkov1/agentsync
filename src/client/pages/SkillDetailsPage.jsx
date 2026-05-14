@@ -77,7 +77,7 @@ function buildFileTree(paths) {
 }
 
 
-export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRename, onChangeContent, skillsState, onToggleSkill, onResolveConflict, onSetGlobalEnabled, onDelete, fromPlugin }) {
+export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRename, onChangeContent, skillsState, onToggleSkill, onResolveConflict, onSetGlobalEnabled, onDelete, onOpenAgent, fromPlugin }) {
   const [collapsedDirs, setCollapsedDirs] = useState({});
   const dirty = (content || "") !== (skill.content || "");
   const globallyEnabled = !new Set(skillsState?.globallyDisabled || []).has(skill.skillId);
@@ -155,6 +155,32 @@ export function SkillDetailsPage({ skill, content, busy, onBack, onSave, onRenam
             onDelete={onDelete}
             deleteName={skill.name || skill.skillId}
           />
+
+          {(() => {
+            const skillRow = (skillsState?.skills || []).find((s) => s.id === skill.skillId);
+            const usedBy = skillRow?.usedByAgents || [];
+            if (!usedBy.length) return null;
+            return (
+              <Panel>
+                <strong className="modal-title">Used by agents <span className="muted">({usedBy.length})</span></strong>
+                <div className="section-gap">
+                  <div className="skills-usedBy-chips">
+                    {usedBy.map((agent) => (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        className="skills-usedBy-chip skills-usedBy-chip--clickable"
+                        onClick={() => onOpenAgent?.(agent.id)}
+                        title={`Open agent ${agent.name}`}
+                      >
+                        {agent.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Panel>
+            );
+          })()}
 
           <Panel>
             <div className="skill-files-head">

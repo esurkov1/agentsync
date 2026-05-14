@@ -62,30 +62,40 @@ export const PluginsPanel = memo(function PluginsPanel({
       key: "name",
       className: "skills-col-name",
       header: "Plugin",
+      sortable: true,
+      sortValue: (plugin) => (plugin.id || "").toLowerCase(),
       renderCell: (plugin) => plugin.id
     },
     {
       key: "skills",
       className: "skills-col-count",
       header: "Skills",
+      sortable: true,
+      sortValue: (plugin) => plugin.counts?.skills ?? -1,
       renderCell: (plugin) => plugin.counts?.skills ?? <span className="muted">—</span>
     },
     {
       key: "agents",
       className: "skills-col-count",
       header: "Agents",
+      sortable: true,
+      sortValue: (plugin) => plugin.counts?.agents ?? -1,
       renderCell: (plugin) => plugin.counts?.agents ?? <span className="muted">—</span>
     },
     {
       key: "hooks",
       className: "skills-col-count",
       header: "Hooks",
+      sortable: true,
+      sortValue: (plugin) => plugin.counts?.hooks ?? -1,
       renderCell: (plugin) => plugin.counts?.hooks ?? <span className="muted">—</span>
     },
     {
       key: "mcp",
       className: "skills-col-count",
       header: "MCP",
+      sortable: true,
+      sortValue: (plugin) => plugin.counts?.mcp ?? -1,
       renderCell: (plugin) => plugin.counts?.mcp ?? <span className="muted">—</span>
     },
   ], []);

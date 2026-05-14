@@ -417,10 +417,9 @@ select { background: var(--panel); }
 }
 
 .skills-table-wrap {
-  overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
-  max-height: calc(100vh - 170px);
+  overflow: hidden;
 }
 
 .skills-table {
@@ -437,14 +436,47 @@ select { background: var(--panel); }
   text-align: left;
 }
 
+.skills-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .skills-table th {
   background: #0f0f12;
   color: var(--muted);
   font-weight: 600;
   font-size: 12px;
-  position: sticky;
-  top: 0;
-  z-index: 1;
+}
+.skills-table th.sortable {
+  padding: 0;
+}
+.skills-table th.sortable .sort-header {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 10px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  user-select: none;
+}
+.skills-table th.sortable .sort-header:hover {
+  color: var(--text);
+}
+.skills-table th.sorted .sort-header {
+  color: var(--text);
+}
+.sort-indicator {
+  font-size: 9px;
+  opacity: 0.45;
+  line-height: 1;
+}
+.sort-indicator--asc,
+.sort-indicator--desc {
+  opacity: 1;
 }
 .table-empty-cell {
   padding: 24px 14px !important;
@@ -883,9 +915,6 @@ select { background: var(--panel); }
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.plugin-details-main .skills-table-wrap {
-  max-height: 407px;
 }
 .plugin-details-main > .skills-table-wrap:first-child {
   margin-top: 0;
@@ -1615,4 +1644,47 @@ select { background: var(--panel); }
     grid-template-columns: 1fr;
   }
 
+}
+
+.skills-col-usedBy {
+  width: 220px;
+  min-width: 160px;
+  max-width: 320px;
+}
+
+.skills-usedBy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.skills-usedBy-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.skills-usedBy-chip--clickable {
+  border: 0;
+  font: inherit;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.skills-usedBy-chip--clickable:hover {
+  background: rgba(127, 127, 127, 0.22);
+  color: var(--text, inherit);
+}
+
+.skills-usedBy-chip--clickable:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }

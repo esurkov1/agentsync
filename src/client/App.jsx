@@ -336,6 +336,7 @@ const SkillsRoute = memo(function SkillsRoute({
   }, [hidden, routeSkillId, skillModal]);
 
   const handleOpenSkill = useCallback((skillId) => navigate("SKILLS", skillId), [navigate]);
+  const handleOpenAgentFromSkills = useCallback((agentName) => navigate("AGENTS", agentName), [navigate]);
   const handleCloseSkill = useCallback(() => navigate("SKILLS"), [navigate]);
 
   return (
@@ -345,6 +346,7 @@ const SkillsRoute = memo(function SkillsRoute({
           skillsState={skillsState}
           busy={routeBusy}
           onOpenSkill={handleOpenSkill}
+          onOpenAgent={handleOpenAgentFromSkills}
           onCreateSkill={createNewSkill}
           onDeleteSkill={deleteExistingSkill}
                     onBatchToggleAllAgents={batchToggleAllAgents}
@@ -370,6 +372,7 @@ const SkillsRoute = memo(function SkillsRoute({
           onToggleSkill={toggleSkill}
           onResolveConflict={resolveConflict}
           onSetGlobalEnabled={setGlobalEnabled}
+          onOpenAgent={handleOpenAgentFromSkills}
           onDelete={async () => { await deleteExistingSkill(skillModal.skillId); handleCloseSkill(); }}
         />
       ) : null}
@@ -438,6 +441,7 @@ const AgentsRoute = memo(function AgentsRoute({
   }, [hidden, routeAgentId, agentModal]);
 
   const handleOpenAgent = useCallback((agentName) => navigate("AGENTS", agentName), [navigate]);
+  const handleOpenSkillFromAgents = useCallback((skillId) => navigate("SKILLS", skillId), [navigate]);
   const handleCloseAgent = useCallback(() => navigate("AGENTS"), [navigate]);
 
   return (
@@ -447,6 +451,7 @@ const AgentsRoute = memo(function AgentsRoute({
           agentsState={agentsState}
           busy={routeBusy}
           onOpenAgent={handleOpenAgent}
+          onOpenSkill={handleOpenSkillFromAgents}
           onCreateAgent={createNewAgent}
           onDeleteAgent={deleteExistingAgent}
                     onBatchToggleAllFrameworks={batchToggleAllFrameworks}
@@ -472,6 +477,7 @@ const AgentsRoute = memo(function AgentsRoute({
           onToggleAgent={toggleAgent}
           onResolveConflict={resolveAgentConflict}
           onSetGlobalEnabled={setAgentGlobalEnabled}
+          onOpenSkill={handleOpenSkillFromAgents}
           onDelete={async () => { await deleteExistingAgent(agentModal.agentName); handleCloseAgent(); }}
         />
       ) : null}

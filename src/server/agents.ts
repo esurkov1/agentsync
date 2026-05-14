@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_IDS, AGENT_TARGETS as REGISTRY_TARGETS, type AgentId, getTarget, isTargetInstalled, pickPath } from "./agentRegistry";
+import { buildSkillNameIndex, type SkillRef } from "./skills";
+import { parseFrontmatterList, parseFrontmatterScalar } from "./frontmatter";
 
 type AgentTarget = { id: AgentId; label: string; agentsPath: string };
 
@@ -224,12 +226,11 @@ async function bootstrapSourceFromFrameworks(excludedAgents: Set<string>): Promi
   }
 }
 
-function parseAgentMeta(content: string): { name: string; description: string } {
-  const nameMatch = content.match(/^name:\s*(.+)$/m);
-  const descriptionMatch = content.match(/^description:\s*(.+)$/m);
+function parseAgentMeta(content: string): { name: string; description: string; skillRefs: string[] } {
   return {
-    name: nameMatch?.[1]?.trim() || "",
-    description: descriptionMatch?.[1]?.trim() || ""
+    name: parseFrontmatterScalar(content, "name"),
+    description: parseFrontmatterScalar(content, "description"),
+    skillRefs: parseFrontmatterList(content, "skills")
   };
 }
 
@@ -405,7 +406,7 @@ export async function getAgentsState(): Promise<{
   configPath: string;
   manifestPath: string;
   globallyDisabled: string[];
-  agents: Array<{ id: string; path: string; name: string; description: string; content: string }>;
+  agents: Array<{ id: string; path: string; name: string; description: string; content: string; skills: SkillRef[] }>;
   frameworks: Array<{
     agentId: AgentId;
     label: string;
@@ -425,16 +426,22 @@ export async function getAgentsState(): Promise<{
   const unionAgents = new Map<string, { id: string; path: string; content: string }>();
   for (const a of discoveredAgents) unionAgents.set(a.id, a);
   for (const a of sourceAgents) unionAgents.set(a.id, a);
+  const skillNameIndex = await buildSkillNameIndex();
   const agents = [...unionAgents.values()]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((agent) => {
       const meta = parseAgentMeta(agent.content);
+      const skills: SkillRef[] = meta.skillRefs.map((refName) => {
+        const found = skillNameIndex.get(refName);
+        return found ? { id: found.id, name: found.name } : { id: null, name: refName };
+      });
       return {
         id: agent.id,
         path: agent.path,
         name: meta.name || agent.id,
         description: meta.description,
-        content: agent.content
+        content: agent.content,
+        skills
       };
     });
 

@@ -155,6 +155,8 @@ export const McpPanel = memo(function McpPanel({
       key: "toggle",
       className: "skills-col-toggle",
       header: "Active",
+      sortable: true,
+      sortValue: (_server, meta) => (meta.globallyEnabled ? 1 : 0),
       onCellClick: (e) => e.stopPropagation(),
       renderCell: (server, meta) => (
         <Switch
@@ -169,6 +171,11 @@ export const McpPanel = memo(function McpPanel({
       key: "agentSystems",
       className: "skills-col-agents",
       header: "Agent system",
+      sortable: true,
+      sortValue: (_server, meta) => {
+        if (!meta.globallyEnabled || !meta.installedFrameworksCount) return -1;
+        return meta.activeCount;
+      },
       renderCell: (server, meta) => {
         if (!meta.globallyEnabled || !meta.installedFrameworksCount) return <span className="muted">—</span>;
         return (
@@ -182,12 +189,16 @@ export const McpPanel = memo(function McpPanel({
       key: "conn-status",
       className: "skills-col-status",
       header: "Tools",
+      sortable: true,
+      sortValue: (_server, meta) => meta.connStatus || "",
       renderCell: (server, meta) => <ServerStatusDot status={meta.connStatus} />
     },
     {
       key: "name",
       className: "skills-col-name skills-col-flex",
       header: "Name",
+      sortable: true,
+      sortValue: (server) => (server.id || "").toLowerCase(),
       renderCell: (server) => server.id
     },
   ], [handleSetGlobalEnabled]);

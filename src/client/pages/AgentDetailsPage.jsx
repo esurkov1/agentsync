@@ -34,6 +34,7 @@ export function AgentDetailsPage({
   onResolveConflict,
   onSetGlobalEnabled,
   onDelete,
+  onOpenSkill,
   fromPlugin
 }) {
   const dirty = (content || "") !== (agent.content || "");
@@ -72,6 +73,45 @@ export function AgentDetailsPage({
             onDelete={onDelete}
             deleteName={agent.name || agent.agentName}
           />
+
+          {(() => {
+            const agentRow = (agentsState?.agents || []).find((a) => a.id === agent.agentName);
+            const skills = agentRow?.skills || [];
+            if (!skills.length) return null;
+            return (
+              <Panel>
+                <strong className="modal-title">Skills <span className="muted">({skills.length})</span></strong>
+                <div className="section-gap">
+                  <div className="skills-usedBy-chips">
+                    {skills.map((skill) => {
+                      if (!skill.id) {
+                        return (
+                          <span
+                            key={skill.name}
+                            className="skills-usedBy-chip"
+                            title={`Skill "${skill.name}" not installed`}
+                          >
+                            {skill.name}
+                          </span>
+                        );
+                      }
+                      return (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          className="skills-usedBy-chip skills-usedBy-chip--clickable"
+                          onClick={() => onOpenSkill?.(skill.id)}
+                          title={`Open skill ${skill.name}`}
+                        >
+                          {skill.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Panel>
+            );
+          })()}
 
           {!fromPlugin && <Panel>
             <strong className="modal-title">Agent system</strong>
